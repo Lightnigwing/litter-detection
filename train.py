@@ -30,6 +30,7 @@ import torch.nn.functional as F
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
+import torchvision.models as tv_models
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from tqdm import tqdm
@@ -39,10 +40,10 @@ from tqdm import tqdm
 TIME_LIMIT       = 20 * 60   # seconds of training per run
 BATCH_SIZE       = 8
 CROP_SIZE        = 384        # random-crop spatial resolution during training
-LR               = 3e-4
+LR               = 1e-3
 WEIGHT_DECAY     = 1e-4
-ENCODER_CHANNELS = [32, 64, 128, 256]   # U-Net encoder stage widths
-DECODER_CHANNELS = [128, 64, 32, 16]    # U-Net decoder stage widths
+ENCODER_CHANNELS = [64, 128, 256, 512]   # U-Net encoder stage widths
+DECODER_CHANNELS = [256, 128, 64, 32]    # U-Net decoder stage widths
 DROPOUT          = 0.1
 POS_WEIGHT       = 5.0        # BCEWithLogitsLoss pos_weight (handles class imbalance)
                                # override with value from data/meta.json
@@ -77,6 +78,8 @@ class LitterDataset(Dataset):
                 A.ColorJitter(brightness=0.3, contrast=0.3,
                               saturation=0.3, hue=0.05, p=0.7),
                 A.GaussNoise(p=0.2),
+                A.GridDistortion(p=0.3),
+                A.ElasticTransform(p=0.3),
                 A.Normalize(mean=(0.485, 0.456, 0.406),
                             std=(0.229, 0.224, 0.225)),
                 ToTensorV2(),
@@ -182,6 +185,106 @@ class UNet(nn.Module):
         return self.head(x)
 
 
+class ResNet34UNet(nn.Module):
+    """
+    U-Net with a pretrained ResNet34 encoder.
+
+    Skip connections come from ResNet34 feature stages:
+      stem  (64 ch,  H/2)   — after maxpool (stride-2 conv + BN + ReLU)
+      layer1 (64 ch,  H/4)
+      layer2 (128 ch, H/8)
+      layer3 (256 ch, H/16)
+      layer4 (512 ch, H/32)  — used as bottleneck
+
+    The decoder mirrors a 4-stage U-Net decoder.
+    BN layers in the backbone are frozen to preserve ImageNet statistics.
+    """
+    # Skip channel sizes from stem through layer3
+    ENC_CHANNELS = [64, 64, 128, 256]   # stem, layer1, layer2, layer3
+    BOTTLENECK_CH = 512                  # layer4
+
+    def __init__(self, dropout: float = DROPOUT):
+        super().__init__()
+
+        # ── Pretrained ResNet34 backbone ──────────────────────────────────
+        backbone = tv_models.resnet34(weights=tv_models.ResNet34_Weights.IMAGENET1K_V1)
+
+        # Stem: conv1 + bn1 + relu (output: 64 ch, stride 2)
+        self.stem_conv = nn.Sequential(backbone.conv1, backbone.bn1, backbone.relu)
+        self.stem_pool = backbone.maxpool   # stride 2 → H/4 total after stem+pool
+        self.layer1 = backbone.layer1       # 64 ch,  H/4  (maxpool already applied)
+        self.layer2 = backbone.layer2       # 128 ch, H/8
+        self.layer3 = backbone.layer3       # 256 ch, H/16
+        self.layer4 = backbone.layer4       # 512 ch, H/32  (bottleneck)
+
+        # Freeze BN parameters in the backbone to preserve ImageNet stats
+        for m in self.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.weight.requires_grad_(False)
+                m.bias.requires_grad_(False)
+
+        # ── Decoder (4 stages) ────────────────────────────────────────────
+        # Stage 1: upsample from 512 → 256, concat with layer3 skip (256) → 256
+        self.up1 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
+        self.dec1 = ConvBlock(256 + 256, 256, dropout)
+
+        # Stage 2: upsample from 256 → 128, concat with layer2 skip (128) → 128
+        self.up2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
+        self.dec2 = ConvBlock(128 + 128, 128, dropout)
+
+        # Stage 3: upsample from 128 → 64, concat with layer1 skip (64) → 64
+        self.up3 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
+        self.dec3 = ConvBlock(64 + 64, 64, dropout)
+
+        # Stage 4: upsample from 64 → 32, concat with stem skip (64) → 32
+        self.up4 = nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2)
+        self.dec4 = ConvBlock(32 + 64, 32, dropout)
+
+        # Final upsample ×2 to recover full input resolution
+        self.final_up = nn.ConvTranspose2d(32, 16, kernel_size=2, stride=2)
+        self.final_conv = ConvBlock(16, 16, dropout)
+
+        # ── Head ──────────────────────────────────────────────────────────
+        self.head = nn.Conv2d(16, 1, kernel_size=1)
+
+    def _align(self, x, ref):
+        """Bilinear resize x to match ref spatial dimensions if needed."""
+        if x.shape[2:] != ref.shape[2:]:
+            x = F.interpolate(x, size=ref.shape[2:], mode="bilinear",
+                               align_corners=False)
+        return x
+
+    def forward(self, x):
+        # Encoder
+        s0 = self.stem_conv(x)         # 64 ch, H/2
+        s1 = self.layer1(self.stem_pool(s0))  # 64 ch, H/4
+        s2 = self.layer2(s1)           # 128 ch, H/8
+        s3 = self.layer3(s2)           # 256 ch, H/16
+        s4 = self.layer4(s3)           # 512 ch, H/32  (bottleneck)
+
+        # Decoder
+        d = self.up1(s4)
+        d = self._align(d, s3)
+        d = self.dec1(torch.cat([d, s3], dim=1))  # 256 ch, H/16
+
+        d = self.up2(d)
+        d = self._align(d, s2)
+        d = self.dec2(torch.cat([d, s2], dim=1))  # 128 ch, H/8
+
+        d = self.up3(d)
+        d = self._align(d, s1)
+        d = self.dec3(torch.cat([d, s1], dim=1))  # 64 ch, H/4
+
+        d = self.up4(d)
+        d = self._align(d, s0)
+        d = self.dec4(torch.cat([d, s0], dim=1))  # 32 ch, H/2
+
+        d = self.final_up(d)           # 16 ch, H/1
+        d = self.final_conv(d)
+
+        return self.head(d)            # 1 ch, H/1
+
+
 # ── Loss ──────────────────────────────────────────────────────────────────────
 
 class CombinedLoss(nn.Module):
@@ -241,11 +344,7 @@ def train(run_name: str, time_limit: int):
                               persistent_workers=True)
 
     # ── Model ─────────────────────────────────────────────────────────────
-    model = UNet(
-        encoder_channels=ENCODER_CHANNELS,
-        decoder_channels=DECODER_CHANNELS,
-        dropout=DROPOUT,
-    ).to(device)
+    model = ResNet34UNet(dropout=DROPOUT).to(device)
 
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {total_params:,}")
@@ -270,7 +369,7 @@ def train(run_name: str, time_limit: int):
             "crop_size":         CROP_SIZE,
             "lr":                LR,
             "weight_decay":      WEIGHT_DECAY,
-            "encoder_channels":  str(ENCODER_CHANNELS),
+            "encoder_channels":  "ResNet34-pretrained",
             "decoder_channels":  str(DECODER_CHANNELS),
             "dropout":           DROPOUT,
             "pos_weight":        pos_weight,

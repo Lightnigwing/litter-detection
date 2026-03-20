@@ -121,3 +121,15 @@ to change. Ideas in rough priority order:
 | Run name | val_iou | Notes |
 |----------|---------|-------|
 | baseline | 0.1845  | U-Net [32,64,128,256], BCE+Dice, AdamW+OneCycleLR, 17 epochs in 20 min |
+| deeper-encoder-64-128-256-512 | 0.2698 | U-Net [64,128,256,512], BCE+Dice, AdamW+OneCycleLR, 25M params, 6 epochs in 20 min |
+| focal-dice-loss | 0.2243 | Focal(gamma=2)+Dice loss, reverted — worse |
+| lower-lr-1e-4 | 0.1790 | LR=1e-4 too slow for time budget, reverted |
+| larger-crop-448 | 0.2127 | CROP=448, batch=6 — fewer steps hurts, reverted |
+| se-attention-blocks | 0.2339 | SE attention on each ConvBlock — slower per epoch, reverted |
+| enhanced-augmentation-grid-elastic | 0.2531 | GridDistortion+ElasticTransform added — close but below best, reverted |
+| resnet34-pretrained-backbone | 0.5119 | ResNet34 ImageNet pretrained encoder, 23 epochs — massive +89% improvement |
+| resnet34-enhanced-augmentation | 0.5465 | + GridDistortion+ElasticTransform augmentation — further improvement |
+| resnet34-aug-pct-start-0p15 | 0.5347 | pct_start=0.15 (was 0.05) — worse, reverted |
+| resnet34-aug-tversky-loss | 0.5362 | Tversky loss (alpha=0.3 beta=0.7) — worse than BCE+Dice, reverted |
+| resnet34-aug-lr-5e-4 | 0.5872 | LR=5e-4 (was 3e-4) — improved |
+| resnet34-aug-lr-8e-4 | **0.5936** | LR=8e-4 — marginal further improvement, CURRENT BEST |
