@@ -26,6 +26,7 @@ Assumptions:
 3. Prepare the model for inference on the Jetson hardware using tensorRT
 4. Compare the model with the alternative approach fine-tuning a yolo-model.
 5. Prepare the inference system by connecting a webcam via eclipse zenoh.
+6. Add an  application monitoring stack with suitable dashboards according to the introduced stack in the lecture
 
 Optional:
 
