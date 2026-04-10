@@ -27,3 +27,10 @@ package = false
 dev-dependencies = [
     "pytest>=8.2.0",
 ]
+
+# CLI Commands
+# main: Name für uv run
+# Pfad zum Skript: trashscanner.main
+# Ausführende Funktion: :main
+[project.scripts]
+main = "trashscanner.main:main"
