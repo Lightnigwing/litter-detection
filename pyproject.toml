@@ -19,7 +19,10 @@ dependencies = [
     "ipywidgets>=8.1.0",
     "huggingface-hub>=0.23.0",
     "albumentations>=1.4.0",
-    "opencv-python-headless>=4.10.0",
+    "opencv-python>=4.10.0",
+    "eclipse-zenoh>=1.9.0",
+    "ultralytics>=8.2.0",
+    "ty>=0.0.29",
 ]
 
 [tool.uv]
