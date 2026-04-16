@@ -13,7 +13,9 @@ Constraint: training stops after TIME_LIMIT seconds so every experiment is
 comparable. The primary metric logged to MLflow is val_iou (higher is better).
 
 Usage:
-    uv run python train.py [--run-name NAME] [--time-limit SECONDS]
+    uv run mlflow ui
+    uv run python train.py --run-name NAME 
+    NOTE: Flag für timelimit entfernt, da epochen statt zeitlimit verwendet wird.
 """
 
 import argparse
@@ -34,10 +36,16 @@ import torchvision.models as tv_models
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from tqdm import tqdm
-
+mlflow.set_experiment("litter-segmentation")
+mlflow.config.enable_system_metrics_logging()
+mlflow.config.set_system_metrics_sampling_interval(5)  # alle 5 Sekunden
+"""
+Änderungen am Traningsskript die von dem orginalen Traningsskript abweichen,
+um das vorgehen des Skriptes, nicht das Model zu verbessern sind mit '# NOTE: ' markiert.
+"""
 # ── Hyperparameters (edit freely) ─────────────────────────────────────────────
 
-TIME_LIMIT       = 20 * 60   # seconds of training per run
+EPOCHEN          = 20         # max number of epochs to train NOTE: TIMELIMIT durch epochen ersetzt
 BATCH_SIZE       = 8
 CROP_SIZE        = 384        # random-crop spatial resolution during training
 LR               = 8e-4
@@ -648,7 +656,7 @@ class CombinedLoss(nn.Module):
         )
         self.label_smoothing = label_smoothing
 
-    def dice_loss(self, logits, targets, smooth: float = 1.0):
+    def dice_loss(self, logits, targets, smooth: float = 1.0): 
         probs = torch.sigmoid(logits)
         num   = 2 * (probs * targets).sum() + smooth
         den   = probs.sum() + targets.sum() + smooth
@@ -666,13 +674,12 @@ class CombinedLoss(nn.Module):
 # ── Metrics ───────────────────────────────────────────────────────────────────
 
 @torch.no_grad()
-def compute_iou(logits: torch.Tensor, masks: torch.Tensor,
+def compute_iou(logits: torch.Tensor, masks: torch.Tensor, # TODO: Threshold evtl ändern
                 threshold: float = 0.5) -> float:
     preds = (torch.sigmoid(logits) > threshold).float()
     inter = (preds * masks).sum().item()
     union = (preds + masks - preds * masks).sum().item()
     return inter / max(union, 1.0)
-
 
 # ── Training loop ─────────────────────────────────────────────────────────────
 
@@ -684,7 +691,7 @@ def get_device() -> torch.device:
     return torch.device("cpu")
 
 
-def train(run_name: str, time_limit: int):
+def train(run_name: str):
     device = get_device()
     print(f"Device: {device}")
 
@@ -712,22 +719,23 @@ def train(run_name: str, time_limit: int):
                                   weight_decay=WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
-        max_lr=LR,
+        max_lr=LR, # TODO: Evtl höheres max_lr, da jetzt mehr steps möglich, da es sich an batches orientiert
+        epochs=EPOCHEN,
         steps_per_epoch=len(train_loader),
-        epochs=9999,          # effectively unlimited; time-budget controls stop
-        pct_start=0.05,
+        pct_start=0.05, # sehr aggreessives Aufwären, standart 0.3
     )
-    criterion = CombinedLoss(pos_weight=pos_weight).to(device)
+    criterion = CombinedLoss(pos_weight=pos_weight).to(device) 
+
 
     # ── MLflow ────────────────────────────────────────────────────────────
-    mlflow.set_experiment("litter-segmentation")
+
     with mlflow.start_run(run_name=run_name):
-        mlflow.log_params({
+        mlflow.log_params({ # TODO Anschauen
             "batch_size":        BATCH_SIZE,
             "crop_size":         CROP_SIZE,
             "lr":                LR,
             "weight_decay":      WEIGHT_DECAY,
-            "encoder_channels":  "ResNet34-pretrained",
+            "encoder_channels":  "ResNet34-pretrained",  
             "decoder_channels":  str(DECODER_CHANNELS),
             "dropout":           DROPOUT,
             "pos_weight":        pos_weight,
@@ -736,32 +744,26 @@ def train(run_name: str, time_limit: int):
             "loss":              "BCE+Dice",
             "total_params":      total_params,
             "device":            str(device),
-            "time_limit_s":      time_limit,
         })
 
         t0 = time.time()
         step = 0
-        epoch = 0
         best_val_iou = 0.0
 
-        while True:
-            epoch += 1
+        for epoch in range(EPOCHEN):
             model.train()
             train_loss = 0.0
             train_iou  = 0.0
-
+            print(f"Epoch {epoch+1}/{EPOCHEN} - Training...")
             for images, masks in train_loader:
-                if time.time() - t0 > time_limit:
-                    break
-
                 images = images.to(device, non_blocking=True)
                 masks  = masks.to(device,  non_blocking=True)
-
+                print(f"Step {step+1}/{len(train_loader)}", end="\r")
                 optimizer.zero_grad(set_to_none=True)
-                logits = model(images)
+                logits = model(images) # logits = raw model outputs (before sigmoid) TODO: Abhängig von los funktion gegebenenfalss was machen
                 loss   = criterion(logits, masks)
                 loss.backward()
-                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                nn.utils.clip_grad_norm_(model.parameters(), 1.0) # verhindert zu große gradienten, evtl verlagsamerter er es, je nach NORM
                 optimizer.step()
                 scheduler.step()
 
@@ -769,49 +771,48 @@ def train(run_name: str, time_limit: int):
                 train_iou  += compute_iou(logits, masks)
                 step += 1
 
-            else: #edu: see https://docs.python.org/3/reference/compound_stmts.html#for
-                # ── Validation ────────────────────────────────────────────
-                model.eval()
-                val_loss = 0.0
-                val_iou  = 0.0
-                with torch.no_grad():
-                    for images, masks in val_loader:
-                        images = images.to(device, non_blocking=True)
-                        masks  = masks.to(device,  non_blocking=True)
-                        logits = model(images)
-                        val_loss += criterion(logits, masks).item()
-                        val_iou  += compute_iou(logits, masks)
+             
+            # ── Validation ────────────────────────────────────────────
+            model.eval()
+            val_loss = 0.0
+            val_iou  = 0.0
+            with torch.no_grad():
+                for images, masks in val_loader:
+                    images = images.to(device, non_blocking=True)
+                    masks  = masks.to(device,  non_blocking=True)
+                    logits = model(images)
+                    val_loss += criterion(logits, masks).item()
+                    val_iou  += compute_iou(logits, masks)
 
-                n_train = len(train_loader)
-                n_val   = len(val_loader)
-                elapsed = time.time() - t0
+            n_train = len(train_loader)
+            n_val   = len(val_loader)
+            elapsed = time.time() - t0
 
-                metrics = {
-                    "train_loss": train_loss / max(n_train, 1),
-                    "train_iou":  train_iou  / max(n_train, 1),
-                    "val_loss":   val_loss   / max(n_val,   1),
-                    "val_iou":    val_iou    / max(n_val,   1),
-                    "epoch":      epoch,
-                    "elapsed_s":  elapsed,
-                    "lr":         scheduler.get_last_lr()[0],
-                }
-                mlflow.log_metrics(metrics, step=step)
+            metrics = {
+                "train_loss": train_loss / max(n_train, 1),
+                "train_iou":  train_iou  / max(n_train, 1),
+                "val_loss":   val_loss   / max(n_val,   1),
+                "val_iou":    val_iou    / max(n_val,   1),
+                "epoch":      epoch,
+                "elapsed_s":  elapsed,
+                "lr":         scheduler.get_last_lr()[0],
+            }
+            mlflow.log_metrics(metrics, step=epoch)
 
-                if val_iou / max(n_val, 1) > best_val_iou:
-                    best_val_iou = val_iou / max(n_val, 1)
-                    torch.save(model.state_dict(), "best_model.pth")
-                    mlflow.log_artifact("best_model.pth")
+            if val_iou / max(n_val, 1) > best_val_iou:  
+                best_val_iou = val_iou / max(n_val, 1)
+                torch.save(model.state_dict(), f"best_model_{model.__class__.__name__}.pth")
+                mlflow.log_artifact(f"best_model_{model.__class__.__name__}.pth")
+            
 
-                print(
-                    f"epoch {epoch:3d}  "
-                    f"train_loss={metrics['train_loss']:.4f}  "
-                    f"train_iou={metrics['train_iou']:.4f}  "
-                    f"val_loss={metrics['val_loss']:.4f}  "
-                    f"val_iou={metrics['val_iou']:.4f}  "
-                    f"[{elapsed:.0f}s]"
-                )
-                continue  # keep outer while going
-            break  # inner for-loop broke early (time limit)
+            print(
+                f"epoch {epoch:3d}  "
+                f"train_loss={metrics['train_loss']:.4f}  "
+                f"train_iou={metrics['train_iou']:.4f}  "
+                f"val_loss={metrics['val_loss']:.4f}  "
+                f"val_iou={metrics['val_iou']:.4f}  "
+                f"[{elapsed:.0f}s]"
+            )
 
         mlflow.log_metric("best_val_iou", best_val_iou)
         print(f"\nBest val_iou: {best_val_iou:.4f}")
@@ -821,8 +822,7 @@ def train(run_name: str, time_limit: int):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-name",   default="baseline",
-                        help="MLflow run name")
-    parser.add_argument("--time-limit", type=int, default=TIME_LIMIT,
-                        help="Training time budget in seconds")
+                        help="MLflow run name")    
+    # NOTE: Flag für timelimit entfernt
     args = parser.parse_args()
-    train(run_name=args.run_name, time_limit=args.time_limit)
+    train(run_name=args.run_name)

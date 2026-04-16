@@ -30,3 +30,18 @@ package = false
 dev-dependencies = [
     "pytest>=8.2.0",
 ]
+
+# CLI Commands
+# main: Name für uv run
+# Pfad zum Skript: trashscanner.main
+# Ausführende Funktion: :main
+[project.scripts]
+main = "trashscanner.main:main"
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu121"
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
