@@ -14,7 +14,7 @@ comparable. The primary metric logged to MLflow is val_iou (higher is better).
 
 Usage:
     uv run mlflow ui
-    uv run python train.py [--run-name NAME] 
+    uv run python train.py --run-name NAME 
     NOTE: Flag für timelimit entfernt, da epochen statt zeitlimit verwendet wird.
 """
 
@@ -36,14 +36,16 @@ import torchvision.models as tv_models
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from tqdm import tqdm
-
+mlflow.set_experiment("litter-segmentation")
+mlflow.config.enable_system_metrics_logging()
+mlflow.config.set_system_metrics_sampling_interval(5)  # alle 5 Sekunden
 """
 Änderungen am Traningsskript die von dem orginalen Traningsskript abweichen,
 um das vorgehen des Skriptes, nicht das Model zu verbessern sind mit '# NOTE: ' markiert.
 """
 # ── Hyperparameters (edit freely) ─────────────────────────────────────────────
 
-EPOCHEN          = 10         # max number of epochs to train NOTE: TIMELIMIT durch epochen ersetzt
+EPOCHEN          = 2         # max number of epochs to train NOTE: TIMELIMIT durch epochen ersetzt
 BATCH_SIZE       = 8
 CROP_SIZE        = 384        # random-crop spatial resolution during training
 LR               = 8e-4
@@ -715,10 +717,10 @@ def train(run_name: str):
     # ── Optimizer + Schedule ──────────────────────────────────────────────
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR,
                                   weight_decay=WEIGHT_DECAY)
-    scheduler = torch.optim.lr_scheduler.OneCycleLR( #TODO: Ändern wegen jetzt epochenlimit
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
         max_lr=LR, # TODO: Evtl höheres max_lr, da jetzt mehr steps möglich, da es sich an batches orientiert
-        total_steps=EPOCHEN * len(train_loader), # stabieler für schwankende epochengrößen, da es sich an den batches orientiert, nicht an den epochen
+        epochs=EPOCHEN,
         steps_per_epoch=len(train_loader),
         pct_start=0.05, # sehr aggreessives Aufwären, standart 0.3
     )
@@ -726,8 +728,6 @@ def train(run_name: str):
 
 
     # ── MLflow ────────────────────────────────────────────────────────────
-    mlflow.set_experiment("litter-segmentation")
-    mlflow.config.enable_system_metrics_logging() #NOTE: Hardwarelogging aktiviert
 
     with mlflow.start_run(run_name=run_name):
         mlflow.log_params({ # TODO Anschauen
@@ -754,11 +754,11 @@ def train(run_name: str):
             model.train()
             train_loss = 0.0
             train_iou  = 0.0
-
+            print(f"Epoch {epoch+1}/{EPOCHEN} - Training...")
             for images, masks in train_loader:
                 images = images.to(device, non_blocking=True)
                 masks  = masks.to(device,  non_blocking=True)
-
+                print(f"Step {step+1}/{len(train_loader)}", end="\r")
                 optimizer.zero_grad(set_to_none=True)
                 logits = model(images) # logits = raw model outputs (before sigmoid) TODO: Abhängig von los funktion gegebenenfalss was machen
                 loss   = criterion(logits, masks)
@@ -771,47 +771,48 @@ def train(run_name: str):
                 train_iou  += compute_iou(logits, masks)
                 step += 1
 
-            else: 
-                # ── Validation ────────────────────────────────────────────
-                model.eval()
-                val_loss = 0.0
-                val_iou  = 0.0
-                with torch.no_grad():
-                    for images, masks in val_loader:
-                        images = images.to(device, non_blocking=True)
-                        masks  = masks.to(device,  non_blocking=True)
-                        logits = model(images)
-                        val_loss += criterion(logits, masks).item()
-                        val_iou  += compute_iou(logits, masks)
+             
+            # ── Validation ────────────────────────────────────────────
+            model.eval()
+            val_loss = 0.0
+            val_iou  = 0.0
+            with torch.no_grad():
+                for images, masks in val_loader:
+                    images = images.to(device, non_blocking=True)
+                    masks  = masks.to(device,  non_blocking=True)
+                    logits = model(images)
+                    val_loss += criterion(logits, masks).item()
+                    val_iou  += compute_iou(logits, masks)
 
-                n_train = len(train_loader)
-                n_val   = len(val_loader)
-                elapsed = time.time() - t0
+            n_train = len(train_loader)
+            n_val   = len(val_loader)
+            elapsed = time.time() - t0
 
-                metrics = {
-                    "train_loss": train_loss / max(n_train, 1),
-                    "train_iou":  train_iou  / max(n_train, 1),
-                    "val_loss":   val_loss   / max(n_val,   1),
-                    "val_iou":    val_iou    / max(n_val,   1),
-                    "epoch":      epoch,
-                    "elapsed_s":  elapsed,
-                    "lr":         scheduler.get_last_lr()[0],
-                }
-                mlflow.log_metrics(metrics, step=step)
+            metrics = {
+                "train_loss": train_loss / max(n_train, 1),
+                "train_iou":  train_iou  / max(n_train, 1),
+                "val_loss":   val_loss   / max(n_val,   1),
+                "val_iou":    val_iou    / max(n_val,   1),
+                "epoch":      epoch,
+                "elapsed_s":  elapsed,
+                "lr":         scheduler.get_last_lr()[0],
+            }
+            mlflow.log_metrics(metrics, step=epoch)
 
-                if val_iou / max(n_val, 1) > best_val_iou:  
-                    best_val_iou = val_iou / max(n_val, 1)
-                    torch.save(model.state_dict(), f"best_model_{model.__class__.__name__}.pth")
-                    mlflow.log_artifact(f"best_model_{model.__class__.__name__}.pth")
-                    
-                print(
-                    f"epoch {epoch:3d}  "
-                    f"train_loss={metrics['train_loss']:.4f}  "
-                    f"train_iou={metrics['train_iou']:.4f}  "
-                    f"val_loss={metrics['val_loss']:.4f}  "
-                    f"val_iou={metrics['val_iou']:.4f}  "
-                    f"[{elapsed:.0f}s]"
-                )
+            if val_iou / max(n_val, 1) > best_val_iou:  
+                best_val_iou = val_iou / max(n_val, 1)
+                torch.save(model.state_dict(), f"best_model_{model.__class__.__name__}.pth")
+                mlflow.log_artifact(f"best_model_{model.__class__.__name__}.pth")
+            
+
+            print(
+                f"epoch {epoch:3d}  "
+                f"train_loss={metrics['train_loss']:.4f}  "
+                f"train_iou={metrics['train_iou']:.4f}  "
+                f"val_loss={metrics['val_loss']:.4f}  "
+                f"val_iou={metrics['val_iou']:.4f}  "
+                f"[{elapsed:.0f}s]"
+            )
 
         mlflow.log_metric("best_val_iou", best_val_iou)
         print(f"\nBest val_iou: {best_val_iou:.4f}")

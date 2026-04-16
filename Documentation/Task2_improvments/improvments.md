@@ -14,3 +14,6 @@ Fertig:
 - hardwarelogging
 TODO:
 - model mit pytorch loggen
+
+## Validation 
+Bei der for else Schleife das else entfernt, das die Validation immer geloggt wird 
