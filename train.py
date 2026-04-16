@@ -45,7 +45,7 @@ um das vorgehen des Skriptes, nicht das Model zu verbessern sind mit '# NOTE: ' 
 """
 # ── Hyperparameters (edit freely) ─────────────────────────────────────────────
 
-EPOCHEN          = 2         # max number of epochs to train NOTE: TIMELIMIT durch epochen ersetzt
+EPOCHEN          = 20         # max number of epochs to train NOTE: TIMELIMIT durch epochen ersetzt
 BATCH_SIZE       = 8
 CROP_SIZE        = 384        # random-crop spatial resolution during training
 LR               = 8e-4

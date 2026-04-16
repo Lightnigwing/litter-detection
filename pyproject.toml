@@ -34,3 +34,11 @@ dev-dependencies = [
 # Ausführende Funktion: :main
 [project.scripts]
 main = "trashscanner.main:main"
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu121"
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
