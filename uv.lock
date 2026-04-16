@@ -310,6 +310,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "albumentations" },
     { name = "datasets" },
+    { name = "eclipse-zenoh" },
     { name = "huggingface-hub" },
     { name = "ipykernel" },
     { name = "ipywidgets" },
@@ -317,13 +318,15 @@ dependencies = [
     { name = "matplotlib" },
     { name = "mlflow" },
     { name = "numpy" },
-    { name = "opencv-python-headless" },
+    { name = "opencv-python" },
     { name = "pillow" },
     { name = "pycocotools" },
     { name = "scikit-learn" },
     { name = "torch" },
     { name = "torchvision" },
     { name = "tqdm" },
+    { name = "ty" },
+    { name = "ultralytics" },
 ]
 
 [package.dev-dependencies]
@@ -335,6 +338,7 @@ dev = [
 requires-dist = [
     { name = "albumentations", specifier = ">=1.4.0" },
     { name = "datasets", specifier = ">=2.19.0" },
+    { name = "eclipse-zenoh", specifier = ">=1.9.0" },
     { name = "huggingface-hub", specifier = ">=0.23.0" },
     { name = "ipykernel", specifier = ">=6.29.0" },
     { name = "ipywidgets", specifier = ">=8.1.0" },
@@ -342,13 +346,15 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.9.0" },
     { name = "mlflow", specifier = ">=2.13.0" },
     { name = "numpy", specifier = ">=1.26.0" },
-    { name = "opencv-python-headless", specifier = ">=4.10.0" },
+    { name = "opencv-python", specifier = ">=4.10.0" },
     { name = "pillow", specifier = ">=10.3.0" },
     { name = "pycocotools", specifier = ">=2.0.8" },
     { name = "scikit-learn", specifier = ">=1.5.0" },
     { name = "torch", specifier = ">=2.3.0", index = "https://download.pytorch.org/whl/cu121" },
     { name = "torchvision", specifier = ">=0.18.0", index = "https://download.pytorch.org/whl/cu121" },
     { name = "tqdm", specifier = ">=4.66.0" },
+    { name = "ty", specifier = ">=0.0.29" },
+    { name = "ultralytics", specifier = ">=8.2.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -1166,7 +1172,7 @@ name = "gunicorn"
 version = "25.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "packaging" },
+    { name = "packaging", marker = "sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/66/13/ef67f59f6a7896fdc2c1d62b5665c5219d6b0a9a1784938eb9a28e55e128/gunicorn-25.1.0.tar.gz", hash = "sha256:1426611d959fa77e7de89f8c0f32eed6aa03ee735f98c01efba3e281b1c47616", size = 594377, upload-time = "2026-02-13T11:09:58.989Z" }
 wheels = [
@@ -2418,7 +2424,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.1.0.70"
 source = { registry = "https://download.pytorch.org/whl/cu121" }
 dependencies = [
-    { name = "nvidia-cublas-cu12" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://download.pytorch.org/whl/cu121/nvidia_cudnn_cu12-9.1.0.70-py3-none-manylinux2014_x86_64.whl", hash = "sha256:165764f44ef8c61fcdfdfdbe769d687e06374059fbb388b6c89ecb0e28793a6f" },
@@ -2445,9 +2451,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.4.5.107"
 source = { registry = "https://download.pytorch.org/whl/cu121" }
 dependencies = [
-    { name = "nvidia-cublas-cu12" },
-    { name = "nvidia-cusparse-cu12" },
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform != 'win32'" },
+    { name = "nvidia-cusparse-cu12", marker = "sys_platform != 'win32'" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://download.pytorch.org/whl/cu121/nvidia_cusolver_cu12-11.4.5.107-py3-none-manylinux1_x86_64.whl", hash = "sha256:8a7ec542f0412294b15072fa7dab71d31334014a69f953004ea7a118206fe0dd" },
@@ -2458,7 +2464,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.1.0.106"
 source = { registry = "https://download.pytorch.org/whl/cu121" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12" },
+    { name = "nvidia-nvjitlink-cu12", marker = "sys_platform != 'win32'" },
 ]
 wheels = [
     { url = "https://download.pytorch.org/whl/cu121/nvidia_cusparse_cu12-12.1.0.106-py3-none-manylinux1_x86_64.whl", hash = "sha256:f3b50f42cf363f86ab21f720998517a659a48131e8d538dc02f8768237bd884c" },
