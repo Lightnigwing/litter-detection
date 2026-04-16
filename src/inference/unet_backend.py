@@ -2,6 +2,7 @@
 
 import sys
 import time
+import types
 from pathlib import Path
 
 import albumentations as A
@@ -9,6 +10,47 @@ import cv2
 import numpy as np
 import torch
 from albumentations.pytorch import ToTensorV2
+
+
+def _install_mlflow_stub() -> None:
+    """Shadow mlflow with a no-op stub so importing train.py doesn't connect
+    to the local tracking DB. train.py calls mlflow.set_experiment and
+    mlflow.config.* at module load time — harmless for inference, but it
+    crashes when the local mlflow.db is on a stale schema."""
+    stub = types.ModuleType("mlflow")
+    config = types.ModuleType("mlflow.config")
+
+    class _NullRun:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    noop = lambda *a, **kw: None
+    stub.set_experiment = noop
+    stub.set_tracking_uri = noop
+    stub.start_run = lambda *a, **kw: _NullRun()
+    stub.active_run = lambda *a, **kw: None
+    stub.log_artifact = noop
+    stub.log_artifacts = noop
+    stub.log_metric = noop
+    stub.log_metrics = noop
+    stub.log_param = noop
+    stub.log_params = noop
+    stub.log_text = noop
+    stub.log_dict = noop
+    stub.set_tag = noop
+    stub.set_tags = noop
+    config.enable_system_metrics_logging = noop
+    config.set_system_metrics_sampling_interval = noop
+    stub.config = config
+
+    sys.modules["mlflow"] = stub
+    sys.modules["mlflow.config"] = config
+
+
+_install_mlflow_stub()
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:

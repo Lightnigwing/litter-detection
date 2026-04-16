@@ -1,14 +1,17 @@
-"""Viewer — subscribes to the overlay topic and displays it with OpenCV."""
+"""Viewer — subscribes to the overlay topic and displays it in a tkinter window.
 
+Uses tkinter + Pillow so it works with opencv-python-headless (no cv2.imshow).
+"""
+
+import io
 import logging
 import sys
 import threading
-import time
+import tkinter as tk
 from pathlib import Path
 
-import cv2
-import numpy as np
 import zenoh
+from PIL import Image, ImageTk
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from config import Settings
@@ -24,7 +27,7 @@ settings = Settings()
 
 
 def main() -> None:
-    latest: dict = {"frame": None}
+    latest: dict = {"image": None}
     lock = threading.Lock()
 
     conf = zenoh.Config()
@@ -33,31 +36,44 @@ def main() -> None:
     logger.info("Zenoh session open — subscribing to '%s'", settings.topic_overlay)
 
     def on_overlay(sample: zenoh.Sample) -> None:
-        arr = np.frombuffer(bytes(sample.payload), np.uint8)
-        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        if img is None:
+        try:
+            img = Image.open(io.BytesIO(bytes(sample.payload)))
+            img.load()
+        except Exception:
             return
         with lock:
-            latest["frame"] = img
+            latest["image"] = img
 
     subscriber = session.declare_subscriber(settings.topic_overlay, on_overlay)
 
-    window = "Litter Detection"
-    cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+    root = tk.Tk()
+    root.title("Litter Detection")
+    label = tk.Label(root)
+    label.pack()
+    tk_image_ref = {"photo": None}
 
+    def update_frame() -> None:
+        with lock:
+            img = latest["image"]
+        if img is not None:
+            photo = ImageTk.PhotoImage(img)
+            label.configure(image=photo)
+            tk_image_ref["photo"] = photo  # keep a reference, else GC'd
+        root.after(33, update_frame)  # ~30 Hz refresh
+
+    def on_close() -> None:
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", on_close)
+    root.bind("q", lambda _e: on_close())
+    root.bind("<Escape>", lambda _e: on_close())
+
+    update_frame()
     try:
-        while True:
-            with lock:
-                img = latest["frame"]
-            if img is not None:
-                cv2.imshow(window, img)
-            if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
-                break
-            time.sleep(0.01)
+        root.mainloop()
     finally:
         subscriber.undeclare()
         session.close()
-        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
