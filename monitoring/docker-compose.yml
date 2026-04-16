@@ -1,0 +1,90 @@
+services:
+  # ── OpenTelemetry Collector ──────────────────────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command:
+      - "--config=/etc/otel-collector-config.yaml"
+    volumes:
+      - ./otel-collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"    # OTLP gRPC receiver (Python SDK sends here)
+      - "4318:4318"    # OTLP HTTP receiver
+      - "9411:9411"    # Zipkin receiver
+    environment:
+      - GOGC=80
+    depends_on:
+      - prometheus
+      - tempo
+    networks:
+      - monitoring
+
+  # ── Prometheus ───────────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+
+  # ── Tempo (Traces) ────────────────────────────────────────────────────────────────
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./otel-collector/tempo-config.yml:/etc/tempo.yml
+      - tempo_data:/var/tempo
+    ports:
+      - "3200:3200"    # tempo
+    networks:
+      - monitoring
+
+  # ── Loki (Logs) ──────────────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:latest
+    command: -config.file=/etc/loki/local-config.yml
+    volumes:
+      - ./otel-collector/loki-config.yml:/etc/loki/local-config.yml
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - monitoring
+
+  # ── Grafana ──────────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource,grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+    networks:
+      - monitoring
+
+volumes:
+  prometheus_data:
+  tempo_data:
+  loki_data:
+  grafana_data:
+
+networks:
+  monitoring:
+    driver: bridge

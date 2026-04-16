@@ -36,6 +36,14 @@ import torchvision.models as tv_models
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from tqdm import tqdm
+from mlflow.tracking import MlflowClient
+
+try:
+    from otel_instrumentation import setup_otel, get_meter, get_tracer
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+    print("OpenTelemetry not available; monitoring metrics will not be exported.")
 
 # ── Hyperparameters (edit freely) ─────────────────────────────────────────────
 
@@ -55,6 +63,10 @@ POS_WEIGHT       = 5.0        # BCEWithLogitsLoss pos_weight (handles class imba
 DATA_DIR   = Path("data")
 IMAGES_DIR = DATA_DIR / "images"
 MASKS_DIR  = DATA_DIR / "masks"
+MLFLOW_TRACKING_URI = "sqlite:///mlflow.db"
+MLFLOW_EXPERIMENT_NAME = "litter-segmentation"
+MLFLOW_LOCAL_EXPERIMENT_NAME = "litter-segmentation-local"
+MLFLOW_ARTIFACT_ROOT = Path("mlartifacts").resolve().as_uri()
 
 
 def load_meta() -> dict:
@@ -62,6 +74,30 @@ def load_meta() -> dict:
     if p.exists():
         return json.loads(p.read_text())
     return {}
+
+
+def configure_mlflow_experiment() -> str:
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    client = MlflowClient(tracking_uri=MLFLOW_TRACKING_URI)
+
+    experiment = client.get_experiment_by_name(MLFLOW_EXPERIMENT_NAME)
+    if experiment is not None:
+        artifact_location = (experiment.artifact_location or "").lower()
+        if "johbaum" in artifact_location or artifact_location.startswith("file:///users/"):
+            fallback_experiment = client.get_experiment_by_name(MLFLOW_LOCAL_EXPERIMENT_NAME)
+            if fallback_experiment is None:
+                client.create_experiment(
+                    MLFLOW_LOCAL_EXPERIMENT_NAME,
+                    artifact_location=MLFLOW_ARTIFACT_ROOT,
+                )
+            return MLFLOW_LOCAL_EXPERIMENT_NAME
+        return MLFLOW_EXPERIMENT_NAME
+
+    client.create_experiment(
+        MLFLOW_EXPERIMENT_NAME,
+        artifact_location=MLFLOW_ARTIFACT_ROOT,
+    )
+    return MLFLOW_EXPERIMENT_NAME
 
 
 class LitterDataset(Dataset):
@@ -737,10 +773,15 @@ def get_hardware_info(device: torch.device) -> dict[str, str]:
     }
 
 
-def train(run_name: str):
+def train(run_name: str, epochs: int = EPOCHS):
     device = get_device()
     print(f"Device: {device}")
     hardware = get_hardware_info(device)
+    otel_available = OTEL_AVAILABLE
+    is_windows = platform.system() == "Windows"
+    train_num_workers = 0 if is_windows else 4
+    val_num_workers = 0 if is_windows else 2
+    use_pin_memory = device.type == "cuda"
 
     meta = load_meta()
     pos_weight = meta.get("pos_weight_suggestion", POS_WEIGHT)
@@ -749,11 +790,13 @@ def train(run_name: str):
     train_ds = LitterDataset("train", crop_size=CROP_SIZE, augment=True)
     val_ds   = LitterDataset("val",   crop_size=CROP_SIZE, augment=False)
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE,
-                              shuffle=True,  num_workers=4, pin_memory=True,
-                              persistent_workers=True)
+                              shuffle=True,  num_workers=train_num_workers,
+                              pin_memory=use_pin_memory,
+                              persistent_workers=(train_num_workers > 0))
     val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE,
-                              shuffle=False, num_workers=2, pin_memory=True,
-                              persistent_workers=True)
+                              shuffle=False, num_workers=val_num_workers,
+                              pin_memory=use_pin_memory,
+                              persistent_workers=(val_num_workers > 0))
 
     # ── Model ─────────────────────────────────────────────────────────────
     model = ResNet34UNet(dropout=DROPOUT).to(device)
@@ -774,10 +817,39 @@ def train(run_name: str):
     criterion = CombinedLoss(pos_weight=pos_weight).to(device)
 
     # ── MLflow ────────────────────────────────────────────────────────────
-    mlflow.set_experiment("litter-segmentation")
+    experiment_name = configure_mlflow_experiment()
+    mlflow.set_experiment(experiment_name)
+    
+    # ── OpenTelemetry ────────────────────────────────────────────────────
+    meter = None
+    tracer = None
+    train_loss_hist = None
+    val_loss_hist = None
+    train_iou_hist = None
+    val_iou_hist = None
+    epoch_time_hist = None
+    epochs_completed_counter = None
+    if otel_available:
+        try:
+            meter, tracer = setup_otel(
+                service_name="litter-detection-training",
+                otlp_endpoint="http://localhost:4317",
+                service_version="1.0"
+            )
+            print("OpenTelemetry metrics & traces initialized")
+            train_loss_hist = meter.create_histogram("training.loss.train")
+            val_loss_hist = meter.create_histogram("training.loss.validation")
+            train_iou_hist = meter.create_histogram("training.iou.train")
+            val_iou_hist = meter.create_histogram("training.iou.validation")
+            epoch_time_hist = meter.create_histogram("training.epoch_time_seconds")
+            epochs_completed_counter = meter.create_counter("training.epochs_completed")
+        except Exception as e:
+            print(f"OpenTelemetry setup failed: {e}")
+            otel_available = False
+    
     with mlflow.start_run(run_name=run_name):
         mlflow.log_params({
-            "epochs":            EPOCHS,
+            "epochs":            epochs,
             "batch_size":        BATCH_SIZE,
             "crop_size":         CROP_SIZE,
             "lr":                LR,
@@ -800,7 +872,7 @@ def train(run_name: str):
         step = 0
         best_val_iou = 0.0
 
-        for epoch in range(1, EPOCHS + 1):
+        for epoch in range(1, epochs + 1):
             epoch_start = time.time()
             model.train()
             train_loss = 0.0
@@ -849,6 +921,18 @@ def train(run_name: str):
                 "lr":             scheduler.get_last_lr()[0],
             }
             mlflow.log_metrics(metrics, step=epoch)
+            
+            # ── Log metrics to OpenTelemetry ──────────────────────────────
+            if meter is not None:
+                try:
+                    train_loss_hist.record(metrics["train_loss"])
+                    val_loss_hist.record(metrics["val_loss"])
+                    train_iou_hist.record(metrics["train_iou"])
+                    val_iou_hist.record(metrics["val_iou"])
+                    epoch_time_hist.record(metrics["epoch_time_s"])
+                    epochs_completed_counter.add(1)
+                except Exception as e:
+                    print(f"⚠️ OTel metric recording failed: {e}")
 
             if val_iou / max(n_val, 1) > best_val_iou:
                 best_val_iou = val_iou / max(n_val, 1)
@@ -878,5 +962,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-name",   default="baseline",
                         help="MLflow run name")
+    parser.add_argument("--epochs", type=int, default=EPOCHS,
+                        help="Number of epochs to train")
     args = parser.parse_args()
-    train(run_name=args.run_name)
+    train(run_name=args.run_name, epochs=args.epochs)
