@@ -62,7 +62,7 @@ def main() -> None:
                 continue
 
             payload = buf.tobytes()
-            session.put(settings.topic_frame, payload)
+            session.put(settings.topic_frame, payload, encoding=zenoh.Encoding.IMAGE_JPEG)
             logger.debug("Published frame (%d bytes)", len(payload))
 
             elapsed = time.monotonic() - t0
