@@ -17,8 +17,10 @@ Usage:
 """
 
 import argparse
+import ctypes
 import json
 import os
+import platform
 import time
 from pathlib import Path
 
@@ -37,7 +39,7 @@ from tqdm import tqdm
 
 # ── Hyperparameters (edit freely) ─────────────────────────────────────────────
 
-TIME_LIMIT       = 20 * 60   # seconds of training per run
+EPOCHS           = 15
 BATCH_SIZE       = 8
 CROP_SIZE        = 384        # random-crop spatial resolution during training
 LR               = 8e-4
@@ -684,9 +686,61 @@ def get_device() -> torch.device:
     return torch.device("cpu")
 
 
-def train(run_name: str, time_limit: int):
+def _get_total_ram_gb() -> float:
+    """Return system RAM in GiB using stdlib-only fallbacks."""
+    # Unix-like systems
+    if hasattr(os, "sysconf"):
+        if "SC_PAGE_SIZE" in os.sysconf_names and "SC_PHYS_PAGES" in os.sysconf_names:
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            phys_pages = os.sysconf("SC_PHYS_PAGES")
+            if isinstance(page_size, int) and isinstance(phys_pages, int):
+                return round((page_size * phys_pages) / (1024 ** 3), 2)
+
+    # Windows fallback
+    if os.name == "nt":
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        status = MEMORYSTATUSEX()
+        status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            return round(status.ullTotalPhys / (1024 ** 3), 2)
+
+    return -1.0
+
+
+def get_hardware_info(device: torch.device) -> dict[str, str]:
+    """Collect hardware details for MLflow parameter logging."""
+    cpu_model = platform.processor() or platform.uname().processor or "unknown"
+    ram_gb = _get_total_ram_gb()
+
+    gpu_model = "none"
+    if device.type == "cuda" and torch.cuda.is_available():
+        gpu_model = torch.cuda.get_device_name(0)
+    elif device.type == "mps":
+        gpu_model = "Apple Metal (MPS)"
+
+    return {
+        "cpu_model": cpu_model,
+        "gpu_model": gpu_model,
+        "ram_gb": f"{ram_gb:.2f}" if ram_gb >= 0 else "unknown",
+    }
+
+
+def train(run_name: str):
     device = get_device()
     print(f"Device: {device}")
+    hardware = get_hardware_info(device)
 
     meta = load_meta()
     pos_weight = meta.get("pos_weight_suggestion", POS_WEIGHT)
@@ -723,6 +777,7 @@ def train(run_name: str, time_limit: int):
     mlflow.set_experiment("litter-segmentation")
     with mlflow.start_run(run_name=run_name):
         mlflow.log_params({
+            "epochs":            EPOCHS,
             "batch_size":        BATCH_SIZE,
             "crop_size":         CROP_SIZE,
             "lr":                LR,
@@ -736,24 +791,22 @@ def train(run_name: str, time_limit: int):
             "loss":              "BCE+Dice",
             "total_params":      total_params,
             "device":            str(device),
-            "time_limit_s":      time_limit,
+            "cpu_model":         hardware["cpu_model"],
+            "gpu_model":         hardware["gpu_model"],
+            "ram_gb":            hardware["ram_gb"],
         })
 
         t0 = time.time()
         step = 0
-        epoch = 0
         best_val_iou = 0.0
 
-        while True:
-            epoch += 1
+        for epoch in range(1, EPOCHS + 1):
+            epoch_start = time.time()
             model.train()
             train_loss = 0.0
             train_iou  = 0.0
 
             for images, masks in train_loader:
-                if time.time() - t0 > time_limit:
-                    break
-
                 images = images.to(device, non_blocking=True)
                 masks  = masks.to(device,  non_blocking=True)
 
@@ -769,52 +822,55 @@ def train(run_name: str, time_limit: int):
                 train_iou  += compute_iou(logits, masks)
                 step += 1
 
-            else: #edu: see https://docs.python.org/3/reference/compound_stmts.html#for
-                # ── Validation ────────────────────────────────────────────
-                model.eval()
-                val_loss = 0.0
-                val_iou  = 0.0
-                with torch.no_grad():
-                    for images, masks in val_loader:
-                        images = images.to(device, non_blocking=True)
-                        masks  = masks.to(device,  non_blocking=True)
-                        logits = model(images)
-                        val_loss += criterion(logits, masks).item()
-                        val_iou  += compute_iou(logits, masks)
+            # ── Validation ────────────────────────────────────────────
+            model.eval()
+            val_loss = 0.0
+            val_iou  = 0.0
+            with torch.no_grad():
+                for images, masks in val_loader:
+                    images = images.to(device, non_blocking=True)
+                    masks  = masks.to(device,  non_blocking=True)
+                    logits = model(images)
+                    val_loss += criterion(logits, masks).item()
+                    val_iou  += compute_iou(logits, masks)
 
-                n_train = len(train_loader)
-                n_val   = len(val_loader)
-                elapsed = time.time() - t0
+            n_train = len(train_loader)
+            n_val   = len(val_loader)
+            elapsed = time.time() - t0
+            epoch_time = time.time() - epoch_start
 
-                metrics = {
-                    "train_loss": train_loss / max(n_train, 1),
-                    "train_iou":  train_iou  / max(n_train, 1),
-                    "val_loss":   val_loss   / max(n_val,   1),
-                    "val_iou":    val_iou    / max(n_val,   1),
-                    "epoch":      epoch,
-                    "elapsed_s":  elapsed,
-                    "lr":         scheduler.get_last_lr()[0],
-                }
-                mlflow.log_metrics(metrics, step=step)
+            metrics = {
+                "train_loss":     train_loss / max(n_train, 1),
+                "train_iou":      train_iou  / max(n_train, 1),
+                "val_loss":       val_loss   / max(n_val,   1),
+                "val_iou":        val_iou    / max(n_val,   1),
+                "elapsed_s":      elapsed,
+                "epoch_time_s":   epoch_time,
+                "lr":             scheduler.get_last_lr()[0],
+            }
+            mlflow.log_metrics(metrics, step=epoch)
 
-                if val_iou / max(n_val, 1) > best_val_iou:
-                    best_val_iou = val_iou / max(n_val, 1)
-                    torch.save(model.state_dict(), "best_model.pth")
-                    mlflow.log_artifact("best_model.pth")
+            if val_iou / max(n_val, 1) > best_val_iou:
+                best_val_iou = val_iou / max(n_val, 1)
+                torch.save(model.state_dict(), "best_model.pth")
 
-                print(
-                    f"epoch {epoch:3d}  "
-                    f"train_loss={metrics['train_loss']:.4f}  "
-                    f"train_iou={metrics['train_iou']:.4f}  "
-                    f"val_loss={metrics['val_loss']:.4f}  "
-                    f"val_iou={metrics['val_iou']:.4f}  "
-                    f"[{elapsed:.0f}s]"
-                )
-                continue  # keep outer while going
-            break  # inner for-loop broke early (time limit)
+            print(
+                f"epoch {epoch:3d}/{EPOCHS}  "
+                f"train_loss={metrics['train_loss']:.4f}  "
+                f"train_iou={metrics['train_iou']:.4f}  "
+                f"val_loss={metrics['val_loss']:.4f}  "
+                f"val_iou={metrics['val_iou']:.4f}  "
+                f"epoch_time={metrics['epoch_time_s']:.1f}s  "
+                f"total={elapsed:.0f}s"
+            )
 
+        total_training_time = time.time() - t0
         mlflow.log_metric("best_val_iou", best_val_iou)
+        mlflow.log_metric("total_training_time_s", total_training_time)
+        mlflow.log_artifact("best_model.pth")
+
         print(f"\nBest val_iou: {best_val_iou:.4f}")
+        print(f"Total training time: {total_training_time:.1f}s")
         print("Run complete.")
 
 
@@ -822,7 +878,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-name",   default="baseline",
                         help="MLflow run name")
-    parser.add_argument("--time-limit", type=int, default=TIME_LIMIT,
-                        help="Training time budget in seconds")
     args = parser.parse_args()
-    train(run_name=args.run_name, time_limit=args.time_limit)
+    train(run_name=args.run_name)
