@@ -10,8 +10,12 @@ Other approaches fine-tune a yolo model: e.g. see for https://github.com/jeremy-
 
 ## 1 Student Task
 
-- [Task Description](student_task.md)
+- [Task Description 1](student_task_1.md)
 - [Context to this project](explainer.md)
+
+## 2 Student Task
+
+- [Task Description 2](student_task_2.md)
 
 ## Example images not in the dataset
 

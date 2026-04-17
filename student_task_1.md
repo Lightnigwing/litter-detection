@@ -2,7 +2,7 @@
 
 > Your mission, should you choose to accept it...
 
-## Aim
+## Aim - Litter Detection Function and Remote Operation
 
 Build a litter detection system based on the proposed training history. This system should use images from the robodog and detect litter in it.
 
@@ -36,8 +36,8 @@ Optional:
 
 1. AI Usage: How did you use AI during this task? (Prompts, Agents, Pipelines, Tools, ...)
 2. Identified improvement points and result, with of these points worked out and which did not.
-3. Demo of the litter detection model with reported IoU 
-4. Webcam Demo 
+3. Demo of the litter detection model with reported IoU
+4. Webcam Demo
 
 ## Starting Questions for finding Improvements
 
