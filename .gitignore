@@ -7,3 +7,6 @@ findings.md
 .DS_Store
 # generic training checkpoint (named checkpoints are tracked)
 best_model.pth
+uv.lock
+yolov8n.pt
+ResNet34_chatgpt_CombinedLoss_50.pth

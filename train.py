@@ -13,7 +13,9 @@ Constraint: training stops after TIME_LIMIT seconds so every experiment is
 comparable. The primary metric logged to MLflow is val_iou (higher is better).
 
 Usage:
-    uv run python train.py [--run-name NAME] [--time-limit SECONDS]
+    uv run mlflow ui
+    uv run python train.py --run-name NAME 
+    NOTE: Flag für timelimit entfernt, da epochen statt zeitlimit verwendet wird.
 """
 
 import argparse
@@ -44,7 +46,13 @@ try:
 except ImportError:
     OTEL_AVAILABLE = False
     print("OpenTelemetry not available; monitoring metrics will not be exported.")
-
+mlflow.set_experiment("litter-segmentation")
+mlflow.config.enable_system_metrics_logging()
+mlflow.config.set_system_metrics_sampling_interval(5)  # alle 5 Sekunden
+"""
+Änderungen am Traningsskript die von dem orginalen Traningsskript abweichen,
+um das vorgehen des Skriptes, nicht das Model zu verbessern sind mit '# NOTE: ' markiert.
+"""
 # ── Hyperparameters (edit freely) ─────────────────────────────────────────────
 
 EPOCHS           = 15
@@ -686,7 +694,7 @@ class CombinedLoss(nn.Module):
         )
         self.label_smoothing = label_smoothing
 
-    def dice_loss(self, logits, targets, smooth: float = 1.0):
+    def dice_loss(self, logits, targets, smooth: float = 1.0): 
         probs = torch.sigmoid(logits)
         num   = 2 * (probs * targets).sum() + smooth
         den   = probs.sum() + targets.sum() + smooth
@@ -704,13 +712,12 @@ class CombinedLoss(nn.Module):
 # ── Metrics ───────────────────────────────────────────────────────────────────
 
 @torch.no_grad()
-def compute_iou(logits: torch.Tensor, masks: torch.Tensor,
+def compute_iou(logits: torch.Tensor, masks: torch.Tensor, # TODO: Threshold evtl ändern
                 threshold: float = 0.5) -> float:
     preds = (torch.sigmoid(logits) > threshold).float()
     inter = (preds * masks).sum().item()
     union = (preds + masks - preds * masks).sum().item()
     return inter / max(union, 1.0)
-
 
 # ── Training loop ─────────────────────────────────────────────────────────────
 
@@ -722,58 +729,7 @@ def get_device() -> torch.device:
     return torch.device("cpu")
 
 
-def _get_total_ram_gb() -> float:
-    """Return system RAM in GiB using stdlib-only fallbacks."""
-    # Unix-like systems
-    if hasattr(os, "sysconf"):
-        if "SC_PAGE_SIZE" in os.sysconf_names and "SC_PHYS_PAGES" in os.sysconf_names:
-            page_size = os.sysconf("SC_PAGE_SIZE")
-            phys_pages = os.sysconf("SC_PHYS_PAGES")
-            if isinstance(page_size, int) and isinstance(phys_pages, int):
-                return round((page_size * phys_pages) / (1024 ** 3), 2)
-
-    # Windows fallback
-    if os.name == "nt":
-        class MEMORYSTATUSEX(ctypes.Structure):
-            _fields_ = [
-                ("dwLength", ctypes.c_ulong),
-                ("dwMemoryLoad", ctypes.c_ulong),
-                ("ullTotalPhys", ctypes.c_ulonglong),
-                ("ullAvailPhys", ctypes.c_ulonglong),
-                ("ullTotalPageFile", ctypes.c_ulonglong),
-                ("ullAvailPageFile", ctypes.c_ulonglong),
-                ("ullTotalVirtual", ctypes.c_ulonglong),
-                ("ullAvailVirtual", ctypes.c_ulonglong),
-                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-            ]
-
-        status = MEMORYSTATUSEX()
-        status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
-            return round(status.ullTotalPhys / (1024 ** 3), 2)
-
-    return -1.0
-
-
-def get_hardware_info(device: torch.device) -> dict[str, str]:
-    """Collect hardware details for MLflow parameter logging."""
-    cpu_model = platform.processor() or platform.uname().processor or "unknown"
-    ram_gb = _get_total_ram_gb()
-
-    gpu_model = "none"
-    if device.type == "cuda" and torch.cuda.is_available():
-        gpu_model = torch.cuda.get_device_name(0)
-    elif device.type == "mps":
-        gpu_model = "Apple Metal (MPS)"
-
-    return {
-        "cpu_model": cpu_model,
-        "gpu_model": gpu_model,
-        "ram_gb": f"{ram_gb:.2f}" if ram_gb >= 0 else "unknown",
-    }
-
-
-def train(run_name: str, epochs: int = EPOCHS):
+def train(run_name: str):
     device = get_device()
     print(f"Device: {device}")
     hardware = get_hardware_info(device)
@@ -809,12 +765,13 @@ def train(run_name: str, epochs: int = EPOCHS):
                                   weight_decay=WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
-        max_lr=LR,
+        max_lr=LR, # TODO: Evtl höheres max_lr, da jetzt mehr steps möglich, da es sich an batches orientiert
+        epochs=EPOCHEN,
         steps_per_epoch=len(train_loader),
-        epochs=9999,          # effectively unlimited; time-budget controls stop
-        pct_start=0.05,
+        pct_start=0.05, # sehr aggreessives Aufwären, standart 0.3
     )
-    criterion = CombinedLoss(pos_weight=pos_weight).to(device)
+    criterion = CombinedLoss(pos_weight=pos_weight).to(device) 
+
 
     # ── MLflow ────────────────────────────────────────────────────────────
     experiment_name = configure_mlflow_experiment()
@@ -848,13 +805,12 @@ def train(run_name: str, epochs: int = EPOCHS):
             otel_available = False
     
     with mlflow.start_run(run_name=run_name):
-        mlflow.log_params({
-            "epochs":            epochs,
+        mlflow.log_params({ # TODO Anschauen
             "batch_size":        BATCH_SIZE,
             "crop_size":         CROP_SIZE,
             "lr":                LR,
             "weight_decay":      WEIGHT_DECAY,
-            "encoder_channels":  "ResNet34-pretrained",
+            "encoder_channels":  "ResNet34-pretrained",  
             "decoder_channels":  str(DECODER_CHANNELS),
             "dropout":           DROPOUT,
             "pos_weight":        pos_weight,
@@ -863,9 +819,6 @@ def train(run_name: str, epochs: int = EPOCHS):
             "loss":              "BCE+Dice",
             "total_params":      total_params,
             "device":            str(device),
-            "cpu_model":         hardware["cpu_model"],
-            "gpu_model":         hardware["gpu_model"],
-            "ram_gb":            hardware["ram_gb"],
         })
 
         t0 = time.time()
@@ -877,16 +830,16 @@ def train(run_name: str, epochs: int = EPOCHS):
             model.train()
             train_loss = 0.0
             train_iou  = 0.0
-
+            print(f"Epoch {epoch+1}/{EPOCHEN} - Training...")
             for images, masks in train_loader:
                 images = images.to(device, non_blocking=True)
                 masks  = masks.to(device,  non_blocking=True)
-
+                print(f"Step {step+1}/{len(train_loader)}", end="\r")
                 optimizer.zero_grad(set_to_none=True)
-                logits = model(images)
+                logits = model(images) # logits = raw model outputs (before sigmoid) TODO: Abhängig von los funktion gegebenenfalss was machen
                 loss   = criterion(logits, masks)
                 loss.backward()
-                nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                nn.utils.clip_grad_norm_(model.parameters(), 1.0) # verhindert zu große gradienten, evtl verlagsamerter er es, je nach NORM
                 optimizer.step()
                 scheduler.step()
 
@@ -934,9 +887,11 @@ def train(run_name: str, epochs: int = EPOCHS):
                 except Exception as e:
                     print(f"⚠️ OTel metric recording failed: {e}")
 
-            if val_iou / max(n_val, 1) > best_val_iou:
+            if val_iou / max(n_val, 1) > best_val_iou:  
                 best_val_iou = val_iou / max(n_val, 1)
-                torch.save(model.state_dict(), "best_model.pth")
+                torch.save(model.state_dict(), f"best_model_{model.__class__.__name__}.pth")
+                mlflow.log_artifact(f"best_model_{model.__class__.__name__}.pth")
+            
 
             print(
                 f"epoch {epoch:3d}/{EPOCHS}  "
@@ -961,8 +916,7 @@ def train(run_name: str, epochs: int = EPOCHS):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-name",   default="baseline",
-                        help="MLflow run name")
-    parser.add_argument("--epochs", type=int, default=EPOCHS,
-                        help="Number of epochs to train")
+                        help="MLflow run name")    
+    # NOTE: Flag für timelimit entfernt
     args = parser.parse_args()
-    train(run_name=args.run_name, epochs=args.epochs)
+    train(run_name=args.run_name)
