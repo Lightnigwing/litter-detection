@@ -91,7 +91,7 @@ A first simple system might look like this:
 
 ```python
 import zenoh
-from messages import ImageBase64
+from interfaces.image import ImageBase64
 import numpy as np
 
 session = zenoh.open(zenoh.Config())
@@ -110,7 +110,7 @@ subscriber = session.declare_subscriber("robot/sensor/image", on_image)
 
 ```python
 import zenoh
-from messages import MovementCommand, MovementSource, ActionCommand, ActionType, EmergencyStopCommand, EmergencyStop
+from interfaces.motion import MovementCommand, MovementSource, ActionCommand, ActionType, EmergencyStopCommand, EmergencyStop
 
 session = zenoh.open(zenoh.Config())
 
