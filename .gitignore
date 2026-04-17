@@ -9,3 +9,4 @@ findings.md
 best_model.pth
 uv.lock
 yolov8n.pt
+ResNet34_chatgpt_CombinedLoss_50.pth

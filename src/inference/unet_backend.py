@@ -95,6 +95,8 @@ class UnetBackend:
         model_cls = VARIANTS[variant]
         self.model = model_cls(dropout=DROPOUT).to(self.device)
         state = torch.load(REPO_ROOT / model_path, map_location=self.device)
+        if "model_state_dict" in state:
+            state = state["model_state_dict"]
         self.model.load_state_dict(state)
         self.model.eval()
 
