@@ -47,7 +47,7 @@ except ImportError:
 
 # ── Hyperparameters (edit freely) ─────────────────────────────────────────────
 
-EPOCHS           = 3
+EPOCHS           = 15
 BATCH_SIZE       = 8
 CROP_SIZE        = 384        # random-crop spatial resolution during training
 LR               = 8e-4
