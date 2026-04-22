@@ -749,8 +749,8 @@ def train(run_name: str):
         t0 = time.time()
         step = 0
         best_val_iou = 0.0
-
-        for epoch in range(EPOCHEN):
+    
+        for epoch in range(1, EPOCHEN+1):
             model.train()
             train_loss = 0.0
             train_iou  = 0.0
