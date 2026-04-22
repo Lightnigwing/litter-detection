@@ -243,7 +243,7 @@ def main():
 
     print("\nDone.")
     print(f"  Train: {meta_out['train_count']}   Val: {meta_out['val_count']}")
-    print(f"  Litter pixel fraction (200-sample): {pos_frac:.2%}")
+    print(f"  Litter pixel fraction : {pos_frac:.2%}")
     print(f"  Suggested BCEWithLogitsLoss pos_weight: {meta_out['pos_weight_suggestion']}")
     print(f"  Metadata → {DATA_DIR / 'meta.json'}")
     print(f"  Note: {count_RLE} annotations were in RLE format and skipped (no polygon segmentation).")
