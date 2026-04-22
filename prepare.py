@@ -33,9 +33,14 @@ from PIL import Image, ImageDraw, ImageOps
 from huggingface_hub import snapshot_download
 from tqdm import tqdm
 
+"""
+alles was angepasst wurde vom orginalen prepare.py wird mit #NOTE markiert und iner kurzen beschreibung warum versehen
+"""
+
+
 # ── Config ────────────────────────────────────────────────────────────────────
-IMAGE_SIZE    = 512          # spatial resolution stored on disk
-VAL_FRACTION  = 0.15
+IMAGE_SIZE    = 768          #NOTE: von 512 auf 768 geändert, da die meisten Bilder im Datensatz größer als 512x512 sind. Dadurch wird weniger verzerrt und mehr Details bleiben erhalten
+VAL_FRACTION  = 0.2 #NOTE von 0,15 auf 0,2 geändert
 RANDOM_SEED   = 42
 DATA_DIR      = Path("data")
 IMAGES_DIR    = DATA_DIR / "images"
@@ -65,6 +70,27 @@ def polygon_to_mask(segmentation: list, width: int, height: int) -> np.ndarray:
         draw.polygon(xy, outline=1, fill=1)
     return np.array(mask, dtype=np.uint8)
 
+# NOTE: Resize mit Padding (kein Verzerren)
+def resize_with_padding(img, size, is_mask=False):
+    w, h = img.size
+
+    scale = min(size / w, size / h)
+    new_w, new_h = int(w * scale), int(h * scale)
+
+    interp = Image.NEAREST if is_mask else Image.BILINEAR
+    img_resized = img.resize((new_w, new_h), interp)
+
+    mode = "L" if is_mask else "RGB"
+    fill = 0 if is_mask else (0, 0, 0)
+
+    new_img = Image.new(mode, (size, size), fill)
+
+    paste_x = (size - new_w) // 2
+    paste_y = (size - new_h) // 2
+
+    new_img.paste(img_resized, (paste_x, paste_y))
+
+    return new_img 
 
 def main():
     random.seed(RANDOM_SEED)
@@ -85,6 +111,36 @@ def main():
         with zf.open(ANNOTATIONS) as f:
             coco = json.load(f)
 
+    """
+    # NOTE: Analyse der Bildgrößen im Datensatz
+
+    import matplotlib.pyplot as plt
+
+    widths = []
+    heights = []
+
+    for img in coco["images"]:
+        widths.append(img["width"])
+        heights.append(img["height"])
+
+    print(f"Min width:  {min(widths)}")
+    print(f"Max width:  {max(widths)}")
+    print(f"Min height: {min(heights)}")
+    print(f"Max height: {max(heights)}")
+
+    # Scatter Plot: Breite vs Höhe
+    plt.figure()
+    plt.scatter(widths, heights)
+    plt.xlabel("Width")
+    plt.ylabel("Height")
+    plt.title("Image size distribution (width vs height)")
+    plt.show()
+    Min width:  842
+    Max width:  6000
+    Min height: 474
+    Max height: 5312
+
+    """
     images_by_id = {img["id"]: img for img in coco["images"]}
 
     # Group annotations by image_id
@@ -105,7 +161,8 @@ def main():
 
     # ── Process ───────────────────────────────────────────────────────────
     stems_by_split: dict[str, list[str]] = {}
-
+    count_RLE = 0
+    count_polygons = 0
     with zipfile.ZipFile(zip_path) as zf:
         # Build a case-insensitive lookup of zip entries (some files are .JPG)
         name_map = {}
@@ -136,19 +193,21 @@ def main():
                     continue
 
                 orig_w, orig_h = img.size
-                img_resized = img.resize((IMAGE_SIZE, IMAGE_SIZE), Image.BILINEAR)
+                img_resized = resize_with_padding(img, IMAGE_SIZE) #NOTE: Resize mit Padding (kein Verzerren)
 
                 # ── Build binary mask from all annotations ─────────────────
                 combined_mask = np.zeros((orig_h, orig_w), dtype=np.uint8)
                 for ann in anns_by_image.get(img_id, []):
                     seg = ann.get("segmentation", [])
                     if not seg or isinstance(seg, dict):   # skip RLE
+                        count_RLE += 1
                         continue
                     m = polygon_to_mask(seg, orig_w, orig_h)
+                    count_polygons += 1
                     combined_mask = np.maximum(combined_mask, m)
 
                 mask_pil     = Image.fromarray(combined_mask * 255, mode="L")
-                mask_resized = mask_pil.resize((IMAGE_SIZE, IMAGE_SIZE), Image.NEAREST)
+                mask_resized = resize_with_padding(mask_pil, IMAGE_SIZE, is_mask=True) # NOTE: Resize mit Padding (kein Verzerren)
 
                 stem = f"{img_id:06d}"
                 img_resized.save(IMAGES_DIR / f"{stem}.jpg", quality=92)
@@ -166,7 +225,8 @@ def main():
     all_stems = stems_by_split["train"] + stems_by_split["val"]
     litter_pixels = 0
     total_pixels  = 0
-    for stem in all_stems[:200]:
+    sample = random.sample(all_stems, min(1000, len(all_stems)))
+    for stem in sample:
         m = np.array(Image.open(MASKS_DIR / f"{stem}.png"))
         litter_pixels += int((m > 127).sum())
         total_pixels  += m.size
@@ -186,6 +246,9 @@ def main():
     print(f"  Litter pixel fraction (200-sample): {pos_frac:.2%}")
     print(f"  Suggested BCEWithLogitsLoss pos_weight: {meta_out['pos_weight_suggestion']}")
     print(f"  Metadata → {DATA_DIR / 'meta.json'}")
+    print(f"  Note: {count_RLE} annotations were in RLE format and skipped (no polygon segmentation).")
+    print(f"        {count_polygons} annotations were processed as polygons.")
+    
 
 
 if __name__ == "__main__":
