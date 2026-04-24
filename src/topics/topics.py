@@ -34,6 +34,7 @@ class Task2_litter(msgspec.Struct, frozen=True):
     frame: str 
     detection: str 
     overlay: str 
+    validtrashpoint: str
 
 class Task3(msgspec.Struct, frozen=True):
     """
@@ -44,21 +45,21 @@ class Task3(msgspec.Struct, frozen=True):
 
 class Task4(msgspec.Struct, frozen=True):
     """
-    Erstellte Pfadpunkte
+    Erstellte Müllpunkte
     """
-    waypoints : str
+    trashpoints : str
 
 class Task5(msgspec.Struct, frozen=True):
     """
-    Erstellte Pfadpunkte
+    Läuft zu Müllpunkten
     """
-    waypoints : str
+    
 
 class Task6(msgspec.Struct, frozen=True):
     """
-    Erstellte Pfadpunkte
+    Gibt Meldung wenn letzten Müllpunkt erreicht
     """
-    waypoints : str
+    lasttrashpoints : str
 
 class demo(msgspec.Struct, frozen=True):
     test : str
@@ -79,10 +80,10 @@ class Topics(msgspec.Struct, frozen=True):
 TOPICS = Topics(
     task0=Task0(searcharea="task0/searcharea"),
     task1=Task1(waypoints="task1/waypoints"),
-    task2=Task2(task21=Task21(lastwaypoint="task2/task21/lastwaypoint"), task22=Task22(frame="task2/task22/frame", detection="task2/task22/detection", overlay="task2/task22/overlay")),
-    task3=Task3(waypoints="task3/waypoints"),
-    task4=Task4(waypoints="task4/waypoints"),
-    task5=Task5(waypoints="task5/waypoints"),
-    task6=Task6(waypoints="task6/waypoints"),
+    task2=Task2(task21=Task2_walk(lastwaypoint="task2/task21/lastwaypoint"), task22=Task2_walk(frame="task2/task22/frame", detection="task2/task22/detection", overlay="task2/task22/overlay")),
+    task3=Task3(waypoints="task3/lastwaypoint"),
+    task4=Task4(waypoints="task4/trashpoints"),
+    task5=Task5(waypoints="task5/"),
+    task6=Task6(waypoints="task6/lasttrashpoints"),
     demo=demo(test="demo/test"),
 )
