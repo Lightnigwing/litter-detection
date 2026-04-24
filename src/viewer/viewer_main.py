@@ -39,7 +39,9 @@ def main() -> None:
         try:
             img = Image.open(io.BytesIO(bytes(sample.payload)))
             img.load()
-        except Exception:
+            logger.info("Received overlay image (%dx%d)", img.width, img.height)
+        except Exception as e:
+            logger.warning("Failed to load overlay image: %s", e)
             return
         with lock:
             latest["image"] = img
@@ -59,6 +61,9 @@ def main() -> None:
             photo = ImageTk.PhotoImage(img)
             label.configure(image=photo)
             tk_image_ref["photo"] = photo  # keep a reference, else GC'd
+            logger.debug("Updated frame with image (%dx%d)", img.width, img.height)
+        else:
+            logger.debug("No image to display")
         root.after(33, update_frame)  # ~30 Hz refresh
 
     def on_close() -> None:

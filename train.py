@@ -17,7 +17,26 @@ Usage:
     uv run python train.py --run-name NAME 
     NOTE: Flag für timelimit entfernt, da epochen statt zeitlimit verwendet wird.
 """
+"""
+Notes:
+1. Druchlauf:
+Beste val_iou:
+0.64 Basline
 
+2. Durchlauf:
+geändert:
+- 3e-4 lr
+- focal dice loss
+Beste val_iou:
+0.71
+
+3. Durchlauf:
+geändert:
+- 50
+Beste val_iou:
+0.74
+
+"""
 import argparse
 import json
 import os
@@ -45,10 +64,10 @@ um das vorgehen des Skriptes, nicht das Model zu verbessern sind mit '# NOTE: ' 
 """
 # ── Hyperparameters (edit freely) ─────────────────────────────────────────────
 
-EPOCHEN          = 20         # max number of epochs to train NOTE: TIMELIMIT durch epochen ersetzt
+EPOCHEN          = 50         # max number of epochs to train NOTE: TIMELIMIT durch epochen ersetzt
 BATCH_SIZE       = 8
-CROP_SIZE        = 768        # random-crop spatial resolution during training
-LR               = 8e-4
+CROP_SIZE        = 512        # random-crop spatial resolution during training
+LR               = 3e-4
 WEIGHT_DECAY     = 1e-4
 ENCODER_CHANNELS = [64, 128, 256, 512]   # U-Net encoder stage widths
 DECODER_CHANNELS = [256, 128, 64, 32]    # U-Net decoder stage widths
@@ -68,6 +87,29 @@ def load_meta() -> dict:
     if p.exists():
         return json.loads(p.read_text())
     return {}
+
+def export_onnx(model, device, path="model.onnx"):
+    model.eval()
+
+    # WICHTIG: auf CPU exportieren
+    model_cpu = model.to("cpu")
+
+    dummy_input = torch.randn(1, 3, CROP_SIZE, CROP_SIZE)
+
+    torch.onnx.export(
+        model_cpu,
+        dummy_input,
+        path,
+        input_names=["input"],
+        output_names=["output"],
+        opset_version=17,
+        dynamic_axes={
+            "input": {0: "batch_size"},
+            "output": {0: "batch_size"}
+        }
+    )
+
+    print(f"[INFO] ONNX model exported to {path}")
 
 
 class LitterDataset(Dataset):
@@ -130,7 +172,6 @@ class ConvBlock(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-
 class ResNet34UNet(nn.Module):
     """
     U-Net with a pretrained ResNet34 encoder.
@@ -162,13 +203,21 @@ class ResNet34UNet(nn.Module):
         self.layer2 = backbone.layer2       # 128 ch, H/8
         self.layer3 = backbone.layer3       # 256 ch, H/16
         self.layer4 = backbone.layer4       # 512 ch, H/32  (bottleneck)
-
+        """
         # Freeze BN parameters in the backbone to preserve ImageNet stats
         for m in self.modules():
             if isinstance(m, nn.BatchNorm2d):
                 m.weight.requires_grad_(False)
                 m.bias.requires_grad_(False)
+        """
+        # WHY: Nur Encoder-BN einfrieren (korrekt!)
+        for m in backbone.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.eval()  # stoppt running stats updates
+                for p in m.parameters():
+                    p.requires_grad = False
 
+        """
         # ── Decoder (4 stages) ────────────────────────────────────────────
         # Stage 1: upsample from 512 → 256, concat with layer3 skip (256) → 256
         self.up1 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
@@ -192,15 +241,32 @@ class ResNet34UNet(nn.Module):
 
         # ── Head ──────────────────────────────────────────────────────────
         self.head = nn.Conv2d(16, 1, kernel_size=1)
+        """
 
-    def _align(self, x, ref):
-        """Bilinear resize x to match ref spatial dimensions if needed."""
-        if x.shape[2:] != ref.shape[2:]:
-            x = F.interpolate(x, size=ref.shape[2:], mode="bilinear",
-                               align_corners=False)
-        return x
+        # WHY: Kein ConvTranspose → vermeidet checkerboard artefacts
+        self.up1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False)
+        self.dec1 = ConvBlock(512 + 256, 256, dropout)
+
+        self.up2 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False)
+        self.dec2 = ConvBlock(256 + 128, 128, dropout)
+
+        self.up3 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False)
+        self.dec3 = ConvBlock(128 + 64, 64, dropout)
+
+        self.up4 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False)
+        self.dec4 = ConvBlock(64 + 64, 64, dropout)
+
+        # Final upsample
+        self.up5 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False)
+        self.final_conv = ConvBlock(64, 32, dropout)
+
+        self.head = nn.Conv2d(32, 1, kernel_size=1)
+
+    def _align(self, x, ref):  #NOTE made onnx safe
+        return F.interpolate(x, size=ref.shape[2:], mode="bilinear", align_corners=False)
 
     def forward(self, x):
+        """
         # Encoder
         s0 = self.stem_conv(x)         # 64 ch, H/2
         s1 = self.layer1(self.stem_pool(s0))  # 64 ch, H/4
@@ -229,33 +295,60 @@ class ResNet34UNet(nn.Module):
         d = self.final_conv(d)
 
         return self.head(d)            # 1 ch, H/1
+        """
+        # ───── Encoder ─────
+        s0 = self.stem_conv(x)              # H/2
+        s1 = self.layer1(self.stem_pool(s0))# H/4
+        s2 = self.layer2(s1)                # H/8
+        s3 = self.layer3(s2)                # H/16
+        s4 = self.layer4(s3)                # H/32
 
+        # ───── Decoder ─────
+
+        d = self.up1(s4)
+        d = self._align(d, s3)
+        d = self.dec1(torch.cat([d, s3], dim=1))
+
+        d = self.up2(d)
+        d = self._align(d, s2)
+        d = self.dec2(torch.cat([d, s2], dim=1))
+
+        d = self.up3(d)
+        d = self._align(d, s1)
+        d = self.dec3(torch.cat([d, s1], dim=1))
+
+        d = self.up4(d)
+        d = self._align(d, s0)
+        d = self.dec4(torch.cat([d, s0], dim=1))
+
+        d = self.up5(d)
+        d = self.final_conv(d)
+
+        return self.head(d)
 
 
 # ── Loss ──────────────────────────────────────────────────────────────────────
 
-class CombinedLoss(nn.Module):
-    """BCE + Dice loss (equal weight) with label smoothing."""
-    def __init__(self, pos_weight: float = POS_WEIGHT, label_smoothing: float = 0.01):
+class FocalDiceLoss(nn.Module):
+    def __init__(self, alpha=0.8, gamma=2.0):
         super().__init__()
-        self.bce = nn.BCEWithLogitsLoss(
-            pos_weight=torch.tensor([pos_weight])
-        )
-        self.label_smoothing = label_smoothing
-
-    def dice_loss(self, logits, targets, smooth: float = 1.0): 
-        probs = torch.sigmoid(logits)
-        num   = 2 * (probs * targets).sum() + smooth
-        den   = probs.sum() + targets.sum() + smooth
-        return 1 - num / den
+        self.alpha = alpha
+        self.gamma = gamma
+        self.bce = nn.BCEWithLogitsLoss(reduction="none")
 
     def forward(self, logits, targets):
-        # Apply label smoothing: shift targets away from 0 and 1
-        if self.label_smoothing > 0:
-            targets_smooth = targets * (1.0 - self.label_smoothing) + 0.5 * self.label_smoothing
-        else:
-            targets_smooth = targets
-        return self.bce(logits, targets_smooth) + self.dice_loss(logits, targets)
+        # Focal
+        bce = self.bce(logits, targets)
+        pt = torch.exp(-bce)
+        focal = self.alpha * (1 - pt) ** self.gamma * bce
+        focal = focal.mean()
+
+        # Dice
+        probs = torch.sigmoid(logits)
+        intersection = (probs * targets).sum()
+        dice = 1 - (2 * intersection + 1) / (probs.sum() + targets.sum() + 1)
+
+        return focal + dice
 
 
 # ── Metrics ───────────────────────────────────────────────────────────────────
@@ -284,7 +377,6 @@ def train(run_name: str):
 
     meta = load_meta()
     pos_weight = meta.get("pos_weight_suggestion", POS_WEIGHT)
-
     # ── Data ──────────────────────────────────────────────────────────────
     train_ds = LitterDataset("train", crop_size=CROP_SIZE, augment=True)
     val_ds   = LitterDataset("val",   crop_size=CROP_SIZE, augment=False)
@@ -311,7 +403,7 @@ def train(run_name: str):
         steps_per_epoch=len(train_loader),
         pct_start=0.05, # sehr aggreessives Aufwären, standart 0.3
     )
-    criterion = CombinedLoss(pos_weight=pos_weight).to(device) 
+    criterion = FocalDiceLoss().to(device)
 
 
     # ── MLflow ────────────────────────────────────────────────────────────
@@ -326,17 +418,18 @@ def train(run_name: str):
             "pos_weight":        pos_weight,
             "optimizer":         "AdamW",
             "scheduler":         "OneCycleLR",
-            "loss":              "BCE+Dice",
+            "loss": "Focal+Dice",
             "total_params":      total_params,
             "device":            str(device),
         })
 
-        t0 = time.time()
+        
         step = 0
         best_val_iou = 0.0
     
         for epoch in range(1, EPOCHEN+1):
             model.train()
+            t0 = time.time()
             train_loss = 0.0
             train_iou  = 0.0
             print(f"Epoch {epoch}/{EPOCHEN} - Training...")
@@ -385,9 +478,18 @@ def train(run_name: str):
             mlflow.log_metrics(metrics, step=epoch)
             
             if metrics["val_iou"] > best_val_iou:  #NOTE if val_iou / max(n_val, 1) > best_val_iou: zu viel wird bereits durch n_val geteilt
-                best_val_iou = val_iou / max(n_val, 1)
-                torch.save(model.state_dict(), f"best_model_{model.__class__.__name__}.pth")
-                mlflow.log_artifact(f"best_model_{model.__class__.__name__}.pth")
+                best_val_iou = metrics["val_iou"]
+                pth_path = f"{run_name}.pth"
+                onnx_path = f"{run_name}.onnx"
+
+                torch.save(model.state_dict(), pth_path)
+                # ONNX export
+                export_onnx(model, device, onnx_path)
+                model.to(device)  # Move model back to device after ONNX export
+
+                # beide loggen
+                mlflow.log_artifact(pth_path)
+                mlflow.log_artifact(onnx_path)
             
 
             print(

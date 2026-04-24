@@ -24,6 +24,8 @@ dependencies = [
     "ultralytics>=8.2.0",
     "ty>=0.0.29",
     "pre-commit>=4.6.0",
+    "onnx>=1.16.0",
+    "onnxruntime>=1.18.0"
 ]
 
 [tool.uv]
@@ -48,3 +50,7 @@ url = "https://download.pytorch.org/whl/cu121"
 [tool.uv.sources]
 torch = { index = "pytorch" }
 torchvision = { index = "pytorch" }
+
+[project.optional-dependencies]
+cpu = ["onnxruntime>=1.18.0"] # uv sync --extras cpu
+gpu = ["onnxruntime-gpu>=1.18.0"] # uv sync --extras gpu

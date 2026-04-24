@@ -8,15 +8,19 @@ from pathlib import Path
 import albumentations as A
 import cv2
 import numpy as np
+import onnxruntime as ort
 import torch
 from albumentations.pytorch import ToTensorV2
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+
 def _install_mlflow_stub() -> None:
     """Shadow mlflow with a no-op stub so importing train.py doesn't connect
-    to the local tracking DB. train.py calls mlflow.set_experiment and
-    mlflow.config.* at module load time — harmless for inference, but it
-    crashes when the local mlflow.db is on a stale schema."""
+    to a local tracking DB during inference."""
     stub = types.ModuleType("mlflow")
     config = types.ModuleType("mlflow.config")
 
@@ -50,18 +54,15 @@ def _install_mlflow_stub() -> None:
     sys.modules["mlflow.config"] = config
 
 
-_install_mlflow_stub()
+def _load_torch_variants() -> tuple[float, dict]:
+    """Import training-side model definitions only when torch backend is used."""
+    _install_mlflow_stub()
+    from train import DROPOUT, ResNet34UNet
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-from train import DROPOUT, EfficientNetB4UNet, ResNet34UNet
-
-
-VARIANTS = {
-    "resnet34_unet": ResNet34UNet,
-    "efficientnetb4_unet": EfficientNetB4UNet,
-}
+    variants = {
+        "resnet34_unet": ResNet34UNet,
+    }
+    return DROPOUT, variants
 
 
 def _pick_device() -> torch.device:
@@ -72,7 +73,7 @@ def _pick_device() -> torch.device:
     return torch.device("cpu")
 
 
-class UnetBackend:
+class UnetBackendTorch:
     def __init__(
         self,
         model_path: str,
@@ -81,9 +82,11 @@ class UnetBackend:
         threshold: float = 0.5,
         fraction_threshold: float = 0.01,
     ) -> None:
-        if variant not in VARIANTS:
+        dropout, variants = _load_torch_variants()
+
+        if variant not in variants:
             raise ValueError(
-                f"Unknown UNet variant '{variant}'. Expected one of {list(VARIANTS)}"
+                f"Unknown UNet variant '{variant}'. Expected one of {list(variants)}"
             )
 
         self.device = _pick_device()
@@ -92,8 +95,8 @@ class UnetBackend:
         self.threshold = threshold
         self.fraction_threshold = fraction_threshold
 
-        model_cls = VARIANTS[variant]
-        self.model = model_cls(dropout=DROPOUT).to(self.device)
+        model_cls = variants[variant]
+        self.model = model_cls(dropout=dropout).to(self.device)
         state = torch.load(REPO_ROOT / model_path, map_location=self.device)
         if "model_state_dict" in state:
             state = state["model_state_dict"]
@@ -115,6 +118,67 @@ class UnetBackend:
         tensor = self.transform(image=img_rgb)["image"].unsqueeze(0).to(self.device)
         with torch.no_grad():
             prob = torch.sigmoid(self.model(tensor)).squeeze().cpu().numpy()
+        duration = time.perf_counter() - t0
+
+        mask = prob > self.threshold
+        litter_fraction = float(mask.mean())
+        mean_confidence = float(prob[mask].mean()) if mask.any() else 0.0
+
+        detections = []
+        if litter_fraction >= self.fraction_threshold:
+            detections.append(
+                {"class": "litter", "confidence": round(mean_confidence, 3)}
+            )
+
+        result = {
+            "detections": detections,
+            "litter_fraction": round(litter_fraction, 4),
+            "latency_ms": round(duration * 1000, 1),
+            "model": self.name,
+        }
+        overlay = _draw_mask_overlay(img_bgr, mask)
+        return result, overlay
+
+
+class UnetBackendONNX:
+    def __init__(
+        self,
+        model_path: str,
+        infer_size: int = 384,
+        threshold: float = 0.5,
+        fraction_threshold: float = 0.01,
+    ) -> None:
+        self.name = model_path
+        self.infer_size = infer_size
+        self.threshold = threshold
+        self.fraction_threshold = fraction_threshold
+
+        providers = ["CPUExecutionProvider"]
+        available = set(ort.get_available_providers())
+        if "CUDAExecutionProvider" in available:
+            providers.insert(0, "CUDAExecutionProvider")
+
+        self.session = ort.InferenceSession(model_path, providers=providers)
+        self.input_name = self.session.get_inputs()[0].name
+
+        self.transform = A.Compose(
+            [
+                A.Resize(infer_size, infer_size),
+                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                ToTensorV2(),
+            ]
+        )
+
+    def infer(self, img_bgr: np.ndarray) -> tuple[dict, np.ndarray]:
+        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+
+        t0 = time.perf_counter()
+        tensor = self.transform(image=img_rgb)["image"].numpy()
+        tensor = np.expand_dims(tensor, axis=0).astype(np.float32)
+        outputs = self.session.run(None, {self.input_name: tensor})
+        logits = np.asarray(outputs[0])
+        prob = 1.0 / (1.0 + np.exp(-logits))
+        prob = prob.squeeze()
         duration = time.perf_counter() - t0
 
         mask = prob > self.threshold

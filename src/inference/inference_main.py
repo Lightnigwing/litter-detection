@@ -27,16 +27,30 @@ settings = Settings()
 
 
 def build_backend(settings: Settings):
+    model_path = settings.model_path
+
+    # YOLO
     if settings.model_type == "yolo":
         from yolo_backend import YoloBackend
+        return YoloBackend(model_path)
 
-        return YoloBackend(settings.model_path)
+    # ONNX
+    if model_path.endswith(".onnx"):
+        from unet_backend import UnetBackendONNX
 
+        return UnetBackendONNX(
+            model_path=model_path,
+            infer_size=settings.infer_size,
+            threshold=settings.segmentation_threshold,
+            fraction_threshold=settings.detection_fraction_threshold,
+        )
+
+    # Fallback
     if settings.model_type in ("resnet34_unet", "efficientnetb4_unet"):
-        from unet_backend import UnetBackend
+        from unet_backend import UnetBackendTorch
 
-        return UnetBackend(
-            model_path=settings.model_path,
+        return UnetBackendTorch(
+            model_path=model_path,
             variant=settings.model_type,
             infer_size=settings.infer_size,
             threshold=settings.segmentation_threshold,
@@ -44,7 +58,6 @@ def build_backend(settings: Settings):
         )
 
     raise ValueError(f"Unknown model_type: {settings.model_type!r}")
-
 
 def decode_frame(data: bytes) -> np.ndarray | None:
     arr = np.frombuffer(data, np.uint8)

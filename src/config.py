@@ -29,10 +29,10 @@ class Settings:
     #   yolo          -> "yolov8n.pt"
     #   resnet34_unet -> "best_resnet34.pth" or "best_model.pth"
     #   effnetb4_unet -> "best_efficientnetb4.pth"
-    model_path: str = "best_resnet34.pth"
+    model_path: str = "resnet34_50_onnx.onnx"
 
     # UNet inference
-    infer_size: int = 384
+    infer_size: int = 512
     segmentation_threshold: float = 0.5
     # Minimum litter pixel fraction to count as a positive detection
     detection_fraction_threshold: float = 0.01
