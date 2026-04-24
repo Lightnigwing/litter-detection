@@ -57,7 +57,7 @@ def _install_mlflow_stub() -> None:
 def _load_torch_variants() -> tuple[float, dict]:
     """Import training-side model definitions only when torch backend is used."""
     _install_mlflow_stub()
-    from train import DROPOUT, ResNet34UNet
+    from model.train import DROPOUT, ResNet34UNet
 
     variants = {
         "resnet34_unet": ResNet34UNet,
