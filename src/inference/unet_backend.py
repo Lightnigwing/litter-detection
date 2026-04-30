@@ -136,9 +136,11 @@ class UnetBackend:
         overlay = _draw_mask_overlay(img_bgr, mask)
         return result, overlay
 
+# Pink color = (255, 0, 180)
+# Orange color = (0, 80, 255)
 
 def _draw_mask_overlay(
-    img_bgr: np.ndarray, mask: np.ndarray, color=(0, 80, 255), alpha: float = 0.55
+    img_bgr: np.ndarray, mask: np.ndarray, color=(255, 0, 180), alpha: float = 0.55
 ) -> np.ndarray:
     """Upsample the network mask to the image resolution and alpha-blend it."""
     h, w = img_bgr.shape[:2]
