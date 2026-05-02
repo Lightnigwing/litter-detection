@@ -47,10 +47,3 @@ url = "https://download.pytorch.org/whl/cu121"
 [tool.uv.sources]
 torch = { index = "pytorch" }
 torchvision = { index = "pytorch" }
-
-[project.optional-dependencies]
-cpu = ["onnxruntime>=1.18.0"] # uv sync --extra cpu
-gpu = ["onnxruntime-gpu>=1.18.0"] # uv sync --extra gpu
-
-[project.scripts]
-orch = "Orchastrator:main"
