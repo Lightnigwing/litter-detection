@@ -89,25 +89,24 @@ def load_meta() -> dict:
     return {}
 
 def export_onnx(model, device, path="model.onnx"):
+    model = model.cpu()
     model.eval()
 
-    # WICHTIG: auf CPU exportieren
-    model_cpu = model.to("cpu")
+    with torch.no_grad():
+        dummy_input = torch.randn(1, 3, CROP_SIZE, CROP_SIZE)
 
-    dummy_input = torch.randn(1, 3, CROP_SIZE, CROP_SIZE)
-
-    torch.onnx.export(
-        model_cpu,
-        dummy_input,
-        path,
-        input_names=["input"],
-        output_names=["output"],
-        opset_version=17,
-        dynamic_axes={
-            "input": {0: "batch_size"},
-            "output": {0: "batch_size"}
-        }
-    )
+        torch.onnx.export(
+            model,
+            dummy_input,
+            path,
+            input_names=["input"],
+            output_names=["output"],
+            opset_version=17,
+            dynamic_axes={
+                "input": {0: "batch_size"},
+                "output": {0: "batch_size"}
+            }
+        )
 
     print(f"[INFO] ONNX model exported to {path}")
 
@@ -171,6 +170,108 @@ class ConvBlock(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
+class EfficientNetB3UNet(nn.Module):
+    """
+    U-Net with a pretrained EfficientNet-B3 encoder.
+
+    Skip connections from EfficientNet-B3 feature stages:
+      features[1]: 24 ch,  H/2  (stem after initial conv)
+      features[2]: 32 ch,  H/4
+      features[3]: 48 ch,  H/8
+      features[5]: 136 ch, H/16
+      features[7]: 384 ch, H/32  — used as bottleneck
+
+    BN layers in the backbone are frozen to preserve ImageNet statistics.
+    """
+
+    def __init__(self, dropout: float = DROPOUT):
+        super().__init__()
+
+        # ── Pretrained EfficientNet-B3 backbone ───────────────────────────
+        backbone = tv_models.efficientnet_b3(
+            weights=tv_models.EfficientNet_B3_Weights.IMAGENET1K_V1)
+        features = backbone.features
+
+        # Extract feature stages as separate modules
+        self.stage0 = features[0]    # 40 ch,  H/2 (initial conv+bn+act)
+        self.stage1 = features[1]    # 24 ch,  H/2 (MBConv1 blocks)
+        self.stage2 = features[2]    # 32 ch,  H/4 (MBConv6 stride-2)
+        self.stage3 = features[3]    # 48 ch,  H/8 (MBConv6 stride-2)
+        self.stage4 = features[4]    # 96 ch,  H/16 (MBConv6 stride-2)
+        self.stage5 = features[5]    # 136 ch, H/16 (MBConv6)
+        self.stage6 = features[6]    # 232 ch, H/32 (MBConv6 stride-2)
+        self.stage7 = features[7]    # 384 ch, H/32 (MBConv6)
+
+        # Freeze BN parameters in the backbone to preserve ImageNet stats
+        for m in self.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.weight.requires_grad_(False)
+                m.bias.requires_grad_(False)
+
+        # ── Decoder (4 stages) ────────────────────────────────────────────
+        # Stage 1: upsample from 384 → 136, concat with stage5 skip (136) → 256
+        self.up1 = nn.ConvTranspose2d(384, 136, kernel_size=2, stride=2)
+        self.dec1 = ConvBlock(136 + 136, 256, dropout)
+
+        # Stage 2: upsample from 256 → 128, concat with stage3 skip (48) → 128
+        self.up2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
+        self.dec2 = ConvBlock(128 + 48, 128, dropout)
+
+        # Stage 3: upsample from 128 → 64, concat with stage2 skip (32) → 64
+        self.up3 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
+        self.dec3 = ConvBlock(64 + 32, 64, dropout)
+
+        # Stage 4: upsample from 64 → 32, concat with stage1 skip (24) → 32
+        self.up4 = nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2)
+        self.dec4 = ConvBlock(32 + 24, 32, dropout)
+
+        # Final upsample ×2 to recover full input resolution
+        self.final_up = nn.ConvTranspose2d(32, 16, kernel_size=2, stride=2)
+        self.final_conv = ConvBlock(16, 16, dropout)
+
+        # ── Head ──────────────────────────────────────────────────────────
+        self.head = nn.Conv2d(16, 1, kernel_size=1)
+
+    def _align(self, x, ref):
+        """Bilinear resize x to match ref spatial dimensions if needed."""
+        if x.shape[2:] != ref.shape[2:]:
+            x = F.interpolate(x, size=ref.shape[2:], mode="bilinear",
+                               align_corners=False)
+        return x
+
+    def forward(self, x):
+        # Encoder
+        s0 = self.stage0(x)          # 40 ch, H/2
+        s1 = self.stage1(s0)         # 24 ch, H/2
+        s2 = self.stage2(s1)         # 32 ch, H/4
+        s3 = self.stage3(s2)         # 48 ch, H/8
+        s4 = self.stage4(s3)         # 96 ch, H/16
+        s5 = self.stage5(s4)         # 136 ch, H/16
+        s6 = self.stage6(s5)         # 232 ch, H/32
+        s7 = self.stage7(s6)         # 384 ch, H/32  (bottleneck)
+
+        # Decoder
+        d = self.up1(s7)
+        d = self._align(d, s5)
+        d = self.dec1(torch.cat([d, s5], dim=1))  # 256 ch, H/16
+
+        d = self.up2(d)
+        d = self._align(d, s3)
+        d = self.dec2(torch.cat([d, s3], dim=1))  # 128 ch, H/8
+
+        d = self.up3(d)
+        d = self._align(d, s2)
+        d = self.dec3(torch.cat([d, s2], dim=1))  # 64 ch, H/4
+
+        d = self.up4(d)
+        d = self._align(d, s1)
+        d = self.dec4(torch.cat([d, s1], dim=1))  # 32 ch, H/2
+
+        d = self.final_up(d)                       # 16 ch, H/1
+        d = self.final_conv(d)
+
+        return self.head(d)                        # 1 ch, H/1
 
 class ResNet34UNet(nn.Module):
     """
@@ -388,7 +489,8 @@ def train(run_name: str):
                               persistent_workers=True)
 
     # ── Model ─────────────────────────────────────────────────────────────
-    model = ResNet34UNet(dropout=DROPOUT).to(device)
+    #model = ResNet34UNet(dropout=DROPOUT).to(device)
+    model = EfficientNetB3UNet(dropout=DROPOUT).to(device)
 
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {total_params:,}")
@@ -480,17 +582,10 @@ def train(run_name: str):
             if metrics["val_iou"] > best_val_iou:  #NOTE if val_iou / max(n_val, 1) > best_val_iou: zu viel wird bereits durch n_val geteilt
                 best_val_iou = metrics["val_iou"]
                 pth_path = f"{run_name}.pth"
-                onnx_path = f"{run_name}.onnx"
 
                 torch.save(model.state_dict(), pth_path)
-                # ONNX export
-                export_onnx(model, device, onnx_path)
-                model.to(device)  # Move model back to device after ONNX export
-
-                # beide loggen
                 mlflow.log_artifact(pth_path)
-                mlflow.log_artifact(onnx_path)
-            
+                            
 
             print(
                 f"epoch {epoch:3d}  "
@@ -503,6 +598,12 @@ def train(run_name: str):
 
         mlflow.log_metric("best_val_iou", best_val_iou)
         print(f"\nBest val_iou: {best_val_iou:.4f}")
+        print("Exporting final ONNX...")
+
+        model.load_state_dict(torch.load(pth_path))
+        export_onnx(model, device, f"{run_name}_final.onnx")
+
+        mlflow.log_artifact(f"{run_name}_final.onnx")
         print("Run complete.")
 
 

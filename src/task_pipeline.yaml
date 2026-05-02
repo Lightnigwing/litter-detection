@@ -1,0 +1,20 @@
+tasks:
+  - id: task1
+
+  - id: task2_1
+    depends_on: [task1]
+    
+  - id: task2_2
+    depends_on: [task1]
+  
+  - id: task3
+    depends_on: [task2_1, task2_2]
+
+  - id: task4
+    depends_on: [task3]
+
+  - id: task5
+    depends_on: [task4]
+
+  - id: task6
+    depends_on: [task5]

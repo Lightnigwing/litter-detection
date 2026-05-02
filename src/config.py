@@ -24,12 +24,13 @@ class Settings:
     #   "yolo"              -> Ultralytics YOLO (bounding boxes)
     #   "resnet34_unet"     -> U-Net with ResNet-34 encoder (segmentation)
     #   "efficientnetb4_unet" -> U-Net with EfficientNet-B4 encoder (segmentation)
-    model_type: str = "resnet34_unet"
+    model_type: str = "effnetb3_unet"
     # model_path is the full filename (relative to repo root) incl. extension:
     #   yolo          -> "yolov8n.pt"
     #   resnet34_unet -> "best_resnet34.pth" or "best_model.pth"
     #   effnetb4_unet -> "best_efficientnetb4.pth"
-    model_path: str = "resnet34_100_FocalDiceLoss.onnx"
+    #   effnetb3_unet -> "efficientnetB3unet_50_onnxauserhalb_final.onnx"
+    model_path: str = "efficientnetB3unet_50_onnxauserhalb_final.onnx"
 
     # UNet inference
     infer_size: int = 512

@@ -12,3 +12,4 @@ yolov8n.pt
 ResNet34_chatgpt_CombinedLoss_50.pth
 *.pth
 *.onnx
+src/autoresearcher_litter_detection.egg-info

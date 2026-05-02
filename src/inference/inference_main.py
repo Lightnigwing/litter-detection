@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-
+from inference.unet_backend import UnetBackendONNX, UnetBackendTorch
 import cv2
 import numpy as np
 import zenoh
@@ -30,13 +30,12 @@ def build_backend(settings: Settings):
     model_path = settings.model_path
 
     # YOLO
-    if settings.model_type == "yolo":
-        from yolo_backend import YoloBackend
-        return YoloBackend(model_path)
+    #if settings.model_type == "yolo":
+    #    from src.interference.yolo_backend import YoloBackend
+    #    return YoloBackend(model_path)
 
     # ONNX
     if model_path.endswith(".onnx"):
-        from unet_backend import UnetBackendONNX
 
         return UnetBackendONNX(
             model_path=model_path,
@@ -46,9 +45,10 @@ def build_backend(settings: Settings):
         )
 
     # Fallback
-    if settings.model_type in ("resnet34_unet", "efficientnetb4_unet"):
-        from unet_backend import UnetBackendTorch
+    if settings.model_type in ("resnet34_unet", "efficientnetb4_unet", "effnetb3_unet"):
 
+        return UnetBackendTorch(
+            model_path=model_path,
         return UnetBackendTorch(
             model_path=model_path,
             variant=settings.model_type,

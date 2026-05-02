@@ -1,0 +1,12 @@
+services:
+  zenoh-router:
+    image: eclipse/zenoh:1.9.0-10-gfe7a78ebc
+    container_name: litter-zenoh-router
+    init: true
+    ports:
+      - "7447:7447/tcp"
+      - "8000:8000/tcp"
+    volumes:
+      - ./zenoh/router-config.json5:/etc/zenoh/router-config.json5:ro
+    command: ["-c", "/etc/zenoh/router-config.json5"]
+    restart: unless-stopped

@@ -1,0 +1,23 @@
+{
+  plugins: {
+    rest: {
+      http_port: 8000
+    },
+    storage_manager: {
+      storages: {
+        pipeline_start: {
+          key_expr: "pipeline/**/start",
+          volume: {
+            id: "memory"
+          }
+        },
+        pipeline_done: {
+          key_expr: "pipeline/**/done",
+          volume: {
+            id: "memory"
+          }
+        }
+      }
+    }
+  }
+}
