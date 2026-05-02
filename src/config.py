@@ -29,7 +29,7 @@ class Settings:
     #   yolo          -> "yolov8n.pt"
     #   resnet34_unet -> "best_resnet34.pth" or "best_model.pth"
     #   effnetb4_unet -> "best_efficientnetb4.pth"
-    model_path: str = "best_resnet34.pth"
+    model_path: str = "efficientnetB3unet_50_onnxauserhalb_final.onnx"
 
     # UNet inference
     infer_size: int = 512

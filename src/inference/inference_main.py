@@ -44,8 +44,8 @@ def build_backend(settings: Settings):
             fraction_threshold=settings.detection_fraction_threshold,
         )
 
-    if settings.model_type in ("resnet34_unet", "efficientnetb4_unet"):
-        from unet_backend import UnetBackend
+    # Fallback
+    if settings.model_type in ("resnet34_unet", "efficientnetb4_unet", "effnetb3_unet"):
 
         return UnetBackendTorch(
             model_path=model_path,
