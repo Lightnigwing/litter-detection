@@ -30,9 +30,13 @@ dependencies = [
     "pre-commit>=4.6.0",
     "onnx>=1.16.0",
     "msgspec>=0.21.1",
+    "pre-commit>=4.6.0",
+    "onnx>=1.16.0",
+    "msgspec>=0.21.1",
 ]
 
 [tool.uv]
+package = true
 package = true
 
 [dependency-groups]
