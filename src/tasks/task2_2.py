@@ -2,6 +2,9 @@ import json
 from config import Settings
 from topics_json.Task_json import Point, Task2_2
 import zenoh
+#TODO: Interference einbauen, Queue einbauen
+#TODO: Croppen der Bilder mit Müll
+#TODO: gecroppte Bilder mit Müll an Agenten (evtl batchweise)
 
 def run_task():
     # Initialisiert Zenoh-Session
