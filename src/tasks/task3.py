@@ -30,18 +30,20 @@ def run_task():
     
     # Main loop der Task-Logik
     while result is None:
-        """
-        Hier den Code einfügen den ihr schreibt der das Result produzier.
-        Wichtig: return result enthält ein Dict, mit allen Daten aufeinmal
+        try:
+            """
+            Hier den Code einfügen den ihr schreibt der das Result produzier.
+            Wichtig: return result enthält ein Dict, mit allen Daten aufeinmal
 
-        Task3: input angekommen an ende, Anzahl müll, witz machen, Output: witz mit Müll
-        
-        result = Task3(witz=f"Warum hat der Müllsack einen Deckel? Damit der Müll nicht rauskommt!")
-        """
-        print(f"[TASK3] Received data: {data_2_1}")
+            Task3: input angekommen an ende, Anzahl müll, witz machen, Output: witz mit Müll
+            
+            result = Task3(witz=f"Warum hat der Müllsack einen Deckel? Damit der Müll nicht rauskommt!")
+            """
+            print(f"[TASK3] Received data: {data_2_1}")
 
-        result = Task3(witz=f"Warum hat der Müllsack einen Deckel? Damit der Müll nicht rauskommt!")
+            result = Task3(witz=f"Warum hat der Müllsack einen Deckel? Damit der Müll nicht rauskommt!")
 
-        return result
-
+            return result
+        finally:
+            session.close()
 

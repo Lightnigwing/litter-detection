@@ -65,10 +65,28 @@ session.declare_subscriber("pipeline/*/done", on_done)
 
 # Main loop: start tasks as soon as their dependencies are done, ends when all tasks are done
 def main():
-    # Worker und Kamera starten
-    worker = subprocess.Popen([sys.executable, "src/worker.py"])
-    #camera = subprocess.Popen(["python", "camera.py"])
-    time.sleep(2)  
+    # Worker, NavManager und Pose-Source starten
+    src_dir = os.path.join(os.getcwd(), "src")
+    worker = subprocess.Popen(
+        [sys.executable, "-m", "worker"], cwd=src_dir
+    )
+    #TODO Camrea
+    nav_proc = subprocess.Popen(
+        [sys.executable, "-m", "nav.nav_manager"], cwd=src_dir
+    )
+    robot_mode = os.environ.get("LITTER_ROBOT_MODE", "mock")
+    if robot_mode == "real":
+        # Echter Go2: robodog-Bridge übernimmt Odometry über WebRTC
+        pose_proc = subprocess.Popen(
+            [sys.executable, "-m", "robodog.main"], cwd=src_dir
+        )
+    else:
+        # Mock: integriert MovementCommands zu einer Pose
+        pose_proc = subprocess.Popen(
+            [sys.executable, "-m", "nav.mock_odometry"], cwd=src_dir
+        )
+    print(f"[ORCH] Robot mode: {robot_mode}")
+    time.sleep(2)
     
     user_input_x, user_input_y = None, None
 
@@ -87,7 +105,6 @@ def main():
         x=user_input_x, 
         y=user_input_y
         )
-
     
     # Start Task1 with initial data
     session.put(f"pipeline/task1/start", json.dumps({
@@ -111,11 +128,12 @@ def main():
             print("\nAbbruch durch Benutzer (Strg+C).")
             session.close()
             break
-    session.close()        
-    worker.terminate()
-    worker.wait()  # Warten, bis der Worker-Prozess vollständig beendet ist
-    #camera.terminate()
-    #camera.wait()  # Warten, bis der Kamera-Prozess vollständig beendet ist
+
+    session.close()
+
+    for proc in (worker, nav_proc, pose_proc):
+        proc.terminate()
+        proc.wait()
         
 
     

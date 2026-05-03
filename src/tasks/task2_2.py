@@ -25,18 +25,20 @@ def run_task():
     
     # Main loop der Task-Logik
     while result is None:
-        """
-        Hier den Code einfügen den ihr schreibt der das Result produzier.
-        Wichtig: return result enthält ein Dict, mit allen Daten aufeinmal
+        try:
+            """
+            Hier den Code einfügen den ihr schreibt der das Result produzier.
+            Wichtig: return result enthält ein Dict, mit allen Daten aufeinmal
 
-        Task2_2: Input cameraframes, poition Hund ,Litter Detection, Output Punkte mit müll, amount müll
+            Task2_2: Input cameraframes, poition Hund ,Litter Detection, Output Punkte mit müll, amount müll
 
-        result = Task2_2(litter_points={"point1": Point(x=1.0, y=2.0), "point2": Point(x=3.0, y=4.0)}, amount_litter=5)
-        """
-        print(f"[TASK2_2] Received data: {data}")
+            result = Task2_2(litter_points={"point1": Point(x=1.0, y=2.0), "point2": Point(x=3.0, y=4.0)}, amount_litter=5)
+            """
+            print(f"[TASK2_2] Received data: {data}")
 
-        result = Task2_2(litter_points={"point1": Point(x=1.0, y=2.0), "point2": Point(x=3.0, y=4.0)}, amount_litter=5)
+            result = Task2_2(litter_points={"point1": Point(x=1.0, y=2.0), "point2": Point(x=3.0, y=4.0)}, amount_litter=5)
 
-        return result
-
+            return result
+        finally:
+            session.close()
 

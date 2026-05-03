@@ -33,10 +33,13 @@ dependencies = [
     "pre-commit>=4.6.0",
     "onnx>=1.16.0",
     "msgspec>=0.21.1",
+    "loguru>=0.7.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [tool.uv]
-package = true
 package = true
 
 [dependency-groups]
@@ -55,6 +58,11 @@ torchvision = { index = "pytorch" }
 [project.optional-dependencies]
 cpu = ["onnxruntime>=1.18.0"] # uv sync --extra cpu
 gpu = ["onnxruntime-gpu>=1.18.0"] # uv sync --extra gpu
+robot = [
+    "unitree-webrtc-connect",
+    "aiortc",
+    "av",
+] # uv sync --extra robot — only for real Go2 hardware tests
 
 [project.scripts]
 orch = "Orchastrator:main"

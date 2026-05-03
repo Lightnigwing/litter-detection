@@ -1,0 +1,43 @@
+# ==============================================================================
+# ROBODOG CONFIGURATION
+# ==============================================================================
+
+[system]
+go2-local-address = "192.168.4.201"
+# name = "robodog"
+# stand-up-delay-sec = 5.0
+# lidar-decoder = "native"
+# movement-max-delay-ms = 200
+
+[zenoh]
+# router-endpoint = "tcp/127.0.0.1:7447"
+shared-memory-enabled = false
+
+[publishers]
+publish-go2-camera = false
+publish-battery = true
+publish-odometry = true
+publish-highstate = true
+publish-lidar = false
+
+[node-rs-zenoh]
+# imu-hz = 250
+# jpeg-quality = 95
+
+[node-rs-zenoh.rgb]
+# width = 1280
+# height = 720
+# fps = 30
+
+[node-rs-zenoh.depth]
+# width = 1280
+# height = 720
+# fps = 30
+
+[node-joy]
+activated = false
+# publish-rate-hz = 15
+# deadzone = 0.1
+
+[node-sensor-viz]
+# web-port = 8080
