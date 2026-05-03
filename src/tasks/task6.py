@@ -23,14 +23,16 @@ def run_task():
 
     # Main loop der Task-Logik
     while result is None:
-        """
-        Hier den Code einfügen den ihr schreibt der das Result produzier.
-        Wichtig: return result enthält ein Dict, mit allen Daten aufeinmal
-        """
-        print(f"[TASK6] Received data: {data}")
+        try:
+            """
+            Hier den Code einfügen den ihr schreibt der das Result produzier.
+            Wichtig: return result enthält ein Dict, mit allen Daten aufeinmal
+            """
+            print(f"[TASK6] Received data: {data}")
 
-        result = Task6(finished_emote=True)
+            result = Task6(finished_emote=True)
 
-        return result
-
+            return result
+        finally:
+            session.close()
 

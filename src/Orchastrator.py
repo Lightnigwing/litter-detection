@@ -67,7 +67,10 @@ session.declare_subscriber("pipeline/*/done", on_done)
 def main():
     # Worker, NavManager und Pose-Source starten
     src_dir = os.path.join(os.getcwd(), "src")
-    worker = subprocess.Popen([sys.executable, "src/worker.py"])
+    worker = subprocess.Popen(
+        [sys.executable, "-m", "worker"], cwd=src_dir
+    )
+    #TODO Camrea
     nav_proc = subprocess.Popen(
         [sys.executable, "-m", "nav.nav_manager"], cwd=src_dir
     )
@@ -102,7 +105,6 @@ def main():
         x=user_input_x, 
         y=user_input_y
         )
-
     
     # Start Task1 with initial data
     session.put(f"pipeline/task1/start", json.dumps({
@@ -126,7 +128,9 @@ def main():
             print("\nAbbruch durch Benutzer (Strg+C).")
             session.close()
             break
+
     session.close()
+
     for proc in (worker, nav_proc, pose_proc):
         proc.terminate()
         proc.wait()

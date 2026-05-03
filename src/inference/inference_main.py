@@ -49,8 +49,6 @@ def build_backend(settings: Settings):
 
         return UnetBackendTorch(
             model_path=model_path,
-        return UnetBackendTorch(
-            model_path=model_path,
             variant=settings.model_type,
             infer_size=settings.infer_size,
             threshold=settings.segmentation_threshold,

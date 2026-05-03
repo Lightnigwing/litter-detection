@@ -24,20 +24,23 @@ def run_task():
     
     # Main loop der Task-Logik
     while result is None:
-        """
-        Hier den Code einfügen den ihr schreibt der das Result produzier.
-        Wichtig: return result enthält ein Dict, mit allen Daten aufeinmal
+        try:
+            """
+            Hier den Code einfügen den ihr schreibt der das Result produzier.
+            Wichtig: return result enthält ein Dict, mit allen Daten aufeinmal
 
-        Task1: x und y als input, Weg planen, Punkte als Output
+            Task1: x und y als input, Weg planen, Punkte als Output
+            
+            result = Task1_points(points={"point1": Point(x=1.0, y=2.0), "point2": Point(x=3.0, y=4.0)})
+            """
+            print(f"[TASK1] Received data: {data}")
+            
+
+            # Dummy Data
+            result = Task1_points(points={"point1": Point(x=1.0, y=2.0), "point2": Point(x=3.0, y=4.0)})
         
-        result = Task1_points(points={"point1": Point(x=1.0, y=2.0), "point2": Point(x=3.0, y=4.0)})
-        """
-        print(f"[TASK1] Received data: {data}")
-        
-
-        # Dummy Data
-        result = Task1_points(points={"point1": Point(x=1.0, y=2.0), "point2": Point(x=3.0, y=4.0)})
-
-        return result
+            return result
+        finally:
+            session.close()
 
 
