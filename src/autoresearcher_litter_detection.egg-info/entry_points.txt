@@ -1,2 +1,0 @@
-[console_scripts]
-orch = Orchastrator:main
