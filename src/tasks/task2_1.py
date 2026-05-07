@@ -4,7 +4,7 @@ import threading
 import zenoh
 
 from config import Settings
-from topics_json.Task_json import Point, Task1_points, Task2_1
+from topics_pydantic_models.pydantic_models import Point, Task1_points, Task2_1
 from interfaces.navigation import (
     NavigationRequest,
     NavigationSegment,
