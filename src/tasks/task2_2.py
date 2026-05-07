@@ -1,6 +1,6 @@
 import json
 from config import Settings
-from topics_json.Task_json import Point, Task2_2
+from topics_pydantic_models.pydantic_models import Point, Task2_2
 import zenoh
 #TODO: Interference einbauen, Queue einbauen
 #TODO: Croppen der Bilder mit Müll

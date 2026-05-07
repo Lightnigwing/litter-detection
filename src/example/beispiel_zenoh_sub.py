@@ -1,7 +1,7 @@
 import json
 from config import Settings# Zenoh-Session starten
 import zenoh
-from topics_json.topics import TOPICS
+from topics_pydantic_models.topics import TOPICS
 
 # Callback-Funktion für eingehende Daten
 def listener(sample):
