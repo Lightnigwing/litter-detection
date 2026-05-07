@@ -42,6 +42,7 @@ def build_backend(settings: Settings):
             infer_size=settings.infer_size,
             threshold=settings.segmentation_threshold,
             fraction_threshold=settings.detection_fraction_threshold,
+            settings=settings,
         )
 
     # Fallback
@@ -53,6 +54,7 @@ def build_backend(settings: Settings):
             infer_size=settings.infer_size,
             threshold=settings.segmentation_threshold,
             fraction_threshold=settings.detection_fraction_threshold,
+            settings=settings,
         )
 
     raise ValueError(f"Unknown model_type: {settings.model_type!r}")

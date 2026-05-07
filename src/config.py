@@ -38,6 +38,10 @@ class Settings:
     # Minimum litter pixel fraction to count as a positive detection
     detection_fraction_threshold: float = 0.01
 
+    # Mask overlay
+    mask_color_bgr: tuple[int, int, int] = (0, 80, 255)
+    mask_alpha: float = 0.55
+
     # OpenTelemetry
     otel_endpoint: str = "http://127.0.0.1:4317"
     otel_service_name: str = "yolo-detector"

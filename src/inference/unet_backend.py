@@ -17,6 +17,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from config import Settings
+
 
 def _install_mlflow_stub() -> None:
     """Shadow mlflow with a no-op stub so importing train.py doesn't connect
@@ -81,7 +83,11 @@ class UnetBackendTorch:
         infer_size: int = 384,
         threshold: float = 0.5,
         fraction_threshold: float = 0.01,
+        settings: Settings | None = None,
     ) -> None:
+        _settings = settings or Settings()
+        self.mask_color = _settings.mask_color_bgr
+        self.mask_alpha = _settings.mask_alpha
         dropout, variants = _load_torch_variants()
 
         if variant not in variants:
@@ -136,7 +142,7 @@ class UnetBackendTorch:
             "latency_ms": round(duration * 1000, 1),
             "model": self.name,
         }
-        overlay = _draw_mask_overlay(img_bgr, mask)
+        overlay = _draw_mask_overlay(img_bgr, mask, color=self.mask_color, alpha=self.mask_alpha)
         return result, overlay
 
 
@@ -147,7 +153,11 @@ class UnetBackendONNX:
         infer_size: int = 384,
         threshold: float = 0.5,
         fraction_threshold: float = 0.01,
+        settings: Settings | None = None,
     ) -> None:
+        _settings = settings or Settings()
+        self.mask_color = _settings.mask_color_bgr
+        self.mask_alpha = _settings.mask_alpha
         self.name = model_path
         self.infer_size = infer_size
         self.threshold = threshold
@@ -197,7 +207,7 @@ class UnetBackendONNX:
             "latency_ms": round(duration * 1000, 1),
             "model": self.name,
         }
-        overlay = _draw_mask_overlay(img_bgr, mask)
+        overlay = _draw_mask_overlay(img_bgr, mask, color=self.mask_color, alpha=self.mask_alpha)
         return result, overlay
 
 
