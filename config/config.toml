@@ -3,7 +3,7 @@
 # ==============================================================================
 
 [system]
-go2-local-address = "192.168.4.201"
+go2-local-address = "192.168.4.203"
 # name = "robodog"
 # stand-up-delay-sec = 5.0
 # lidar-decoder = "native"
