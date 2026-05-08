@@ -8,16 +8,16 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
+from topics_pydantic_models.topics import TOPICS
 import zenoh
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIModel
-
 from config import Settings
 from inference.inference_main import build_backend
 from topics_pydantic_models.pydantic_models import Point, Task2_2
-from topics_json.topics import TOPICS
+
 
 BATCH_SIZE = 10
 OLLAMA_MODEL = "llama3.2-vision:11b"
@@ -42,10 +42,10 @@ validator_agent = Agent(
     result_type=ValidationResult,
     system_prompt=(
         "Du bist ein Müll-Erkennungsexperte. "
-        "Die Frames zeigen Kameraaufnahmen – erkannter Müll ist orange-rot markiert. "
+        "Die Frames zeigen Kameraaufnahmen erkannter Müll ist Lila markiert. "
         "Prüfe, welche Frames wirklich Müll enthalten. "
         "Wenn dasselbe Objekt in mehreren Frames vorkommt, "
-        "gib nur den Index des ersten Frames zurück."
+        "gib nur den Index des ersten Frames zurück in dem der mehrfachauftretende Müll gefunden wird."
     ),
 )
 
@@ -135,7 +135,7 @@ def run_task() -> Task2_2:
         except Exception:
             pass
 
-    pos_sub = session.declare_subscriber("demo/position", _on_position)
+    pos_sub = session.declare_subscriber("robodog/system_state/odometry", _on_position)
     cropped_pub = session.declare_publisher(TOPICS.litter.cropped)
 
     def _on_frame(sample: zenoh.Sample) -> None:
