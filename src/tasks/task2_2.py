@@ -16,7 +16,7 @@ from pydantic_ai.models.openai import OpenAIModel
 
 from config import Settings
 from inference.inference_main import build_backend
-from topics_json.Task_json import Point, Task2_2
+from topics_pydantic_models.pydantic_models import Point, Task2_2
 from topics_json.topics import TOPICS
 
 BATCH_SIZE = 10
