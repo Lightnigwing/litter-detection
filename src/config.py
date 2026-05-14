@@ -13,7 +13,7 @@ class Settings:
 
     # Camera
     # camera_index=0 is usually the built-in webcam, camera_index=1 is the first external webcam. Adjust as needed.
-    camera_index: int = 0
+    camera_index: int = 1
     frame_width: int = 640
     frame_height: int = 480
     fps: int = 10
