@@ -57,6 +57,10 @@ url = "https://download.pytorch.org/whl/cu121"
 explicit = true
 
 [tool.uv.sources]
+pyrealsense2 = [
+    { path = "vendor/pyrealsense2", marker = "sys_platform == 'linux' and platform_machine == 'aarch64'" },
+]
+
 torch = [
     { index = "pytorch-cu121", marker = "platform_machine == 'x86_64'" }
 ]
@@ -72,6 +76,7 @@ robot = [
     "unitree-webrtc-connect",
     "aiortc",
     "av",
+    "pyrealsense2; sys_platform == 'linux' and platform_machine == 'aarch64'",
 ] # uv sync --extra robot — only for real Go2 hardware tests
 
 [project.scripts]
