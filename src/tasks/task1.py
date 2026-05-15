@@ -3,7 +3,7 @@ import json
 import time
 from pathlib import Path
 from config import Settings
-from topics_json.Task_json import Task1_points
+from topics_json.Task_json import Point, Task1_points
 import zenoh
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel

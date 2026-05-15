@@ -1,7 +1,7 @@
 import os
 import subprocess
 import sys
-from topics_json.Task_json import Task1_user
+from topics_pydantic_models.pydantic_models import Task1_user
 import zenoh
 import yaml
 import json

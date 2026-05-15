@@ -1,6 +1,6 @@
 import json
 from config import Settings
-from topics_json.Task_json import Task6
+from topics_pydantic_models.pydantic_models import Task6
 import zenoh
 
 def run_task():
