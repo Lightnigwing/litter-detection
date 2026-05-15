@@ -36,17 +36,34 @@ Other approaches fine-tune a yolo model: e.g. see for https://github.com/jeremy-
 Init project:
 
 ```bash
-uv sync
+uv sync                  # alles außer Simulation (inkl. Pipeline + echter Robodog-Bridge)
+uv sync --all-extras     # zusätzlich MuJoCo-Simulation
 ```
+
+### Zenoh router (Docker)
+
+Pipeline-Komponenten reden über Zenoh. Den Router via Compose starten:
+
+```bash
+docker compose -f litter_detection_docker/docker-compose.yml up -d
+```
+
+### Components
+
+Jede Komponente hat einen eigenen `uv run` Entry-Point:
+
+| Command | Beschreibung |
+|---------|--------------|
+| `uv run orch` | Pipeline-Orchestrator. Startet Worker + NavManager + Pose-Source automatisch als Subprozesse. Erwartet x/y-Eingabe für task1. |
+| `uv run sim` | MuJoCo-Simulation des Go2 (Pose-Source). Optional `--headless` ohne mjviser. Braucht `--all-extras`. |
+| `uv run robodog` | WebRTC-Bridge zum echten Go2 (Pose-Source). IP konfigurierbar in `src/config.py::go2_local_address`. |
+| `uv run mlflow ui` | MLflow-Server für Experiment-/Training-History. |
+
 
 Content:
 
 - There is a [analysis.ipynb](analysis.ipynb) notebook to take a first look on the project and test the existing models.
 - The project contains a mlflow project that stores the hole experiment and training history.
-  Run the following command to launch the mlflow server and ui
-  ```bash
-  uv run mlflow ui
-  ```
 
 
 

@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import os
 from functools import cached_property
-from pathlib import Path
 
 import msgspec
 import zenoh
-from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 
+from config import Settings as PipelineSettings
 from interfaces.topics import Topics, TOPICS
 
 
@@ -106,9 +105,6 @@ class RoboDogConfig(Base):
     node_sensor_viz: NodeSensorViz = msgspec.field(default_factory=NodeSensorViz)
 
 
-load_dotenv(verbose=True)
-
-
 def _build_zenoh_config(zenoh_settings: Zenoh) -> zenoh.Config:
     """Build a zenoh.Config programmatically from settings."""
     endpoint = os.environ.get(
@@ -138,18 +134,24 @@ def _build_zenoh_config(zenoh_settings: Zenoh) -> zenoh.Config:
 
 
 class Settings(BaseSettings):
-    _project_root: Path = Path(__file__).resolve().parents[2]
-    config_path: Path = _project_root / "config" / "config.toml"
-
     @property
     def topics(self) -> Topics:
         return TOPICS
 
     @cached_property
     def config(self) -> RoboDogConfig:
-        """Loads config from file."""
-        with open(self.config_path, "rb") as f:
-            return msgspec.toml.decode(f.read(), type=RoboDogConfig)
+        """Build the Robodog config in-process from the central pipeline Settings."""
+        pipeline = PipelineSettings()
+        return RoboDogConfig(
+            system=System(go2_local_address=pipeline.go2_local_address),
+            zenoh=Zenoh(
+                router_endpoint=pipeline.zenoh_router,
+                shared_memory_enabled=pipeline.zenoh_shared_memory,
+            ),
+            publishers=Publishers(),
+            node_rs_zenoh=RSZenoh(rgb=CameraStream(), depth=CameraStream()),
+            node_joy=NodeJoy(activated=False),
+        )
 
     @cached_property
     def zenoh_config(self) -> zenoh.Config:
