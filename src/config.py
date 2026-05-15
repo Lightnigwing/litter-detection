@@ -10,6 +10,8 @@ class Settings:
     topic_frame: str = "litter/frame"
     topic_detections: str = "litter/detections"
     topic_overlay: str = "litter/overlay"
+    topic_depth_img: str = "litter/frame_depth"
+    topic_camera_intrinsics: str = "litter/frame_intrinsics"
 
     # Camera
     # camera_index=0 is usually the built-in webcam, camera_index=1 is the first external webcam. Adjust as needed.
