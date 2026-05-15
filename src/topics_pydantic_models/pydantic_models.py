@@ -1,6 +1,4 @@
-from typing_extensions import Annotated
-
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel
 from typing import Any, Dict, Optional
 
 class Task1_user(BaseModel):
@@ -38,3 +36,6 @@ class Task5(BaseModel):
 class Task6(BaseModel):
     finished_emote: bool
     
+
+class SearchPath(BaseModel):
+    points: list[Point]

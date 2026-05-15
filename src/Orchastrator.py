@@ -70,7 +70,9 @@ def main():
     worker = subprocess.Popen(
         [sys.executable, "-m", "worker"], cwd=src_dir
     )
-    #TODO Camrea
+    #cam_proc = subprocess.Popen(
+    #    [sys.executable, "-m", "camera.camera_realsense"], cwd=src_dir
+    #)
     nav_proc = subprocess.Popen(
         [sys.executable, "-m", "nav.nav_manager"], cwd=src_dir
     )
@@ -86,7 +88,7 @@ def main():
             [sys.executable, "-m", "nav.mock_odometry"], cwd=src_dir
         )
     print(f"[ORCH] Robot mode: {robot_mode}")
-    time.sleep(2)
+    time.sleep(5)
     
     user_input_x, user_input_y = None, None
 
@@ -130,7 +132,7 @@ def main():
             break
 
     session.close()
-
+    #cam_proc
     for proc in (worker, nav_proc, pose_proc):
         proc.terminate()
         proc.wait()
