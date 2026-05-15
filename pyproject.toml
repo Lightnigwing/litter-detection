@@ -37,6 +37,9 @@ dependencies = [
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "python-dotenv>=1.0.0",
+    "unitree-webrtc-connect",
+    "aiortc",
+    "av",
 ]
 
 [tool.uv]
@@ -58,11 +61,14 @@ torchvision = { index = "pytorch" }
 [project.optional-dependencies]
 cpu = ["onnxruntime>=1.18.0"] # uv sync --extra cpu
 gpu = ["onnxruntime-gpu>=1.18.0"] # uv sync --extra gpu
-robot = [
-    "unitree-webrtc-connect",
-    "aiortc",
-    "av",
-] # uv sync --extra robot — only for real Go2 hardware tests
+sim = [
+    "mujoco>=3.2.0,<3.8",  # mjviser 0.0.12 uses mjENBL_MULTICCD which was removed in 3.8
+    "robot-descriptions>=1.10.0",
+    "onnxruntime>=1.25.1",
+    "mjviser>=0.0.12",
+] # uv sync --extra sim — MuJoCo simulation stack
 
 [project.scripts]
 orch = "Orchastrator:main"
+sim = "sim.sim_node:cli"
+robodog = "robodog.main:cli"
