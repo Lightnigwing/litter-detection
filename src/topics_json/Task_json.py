@@ -37,12 +37,5 @@ class Task6(BaseModel):
     finished_emote: bool
     
 
-class PathPoint(BaseModel):
-    name: PointKey
-    x: float
-    y: float
-
-
 class SearchPath(BaseModel):
-    points: list[PathPoint]
-    description: str
+    points: list[Point]
