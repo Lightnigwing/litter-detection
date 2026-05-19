@@ -68,8 +68,10 @@ torchvision = [
     { index = "pytorch-cu121", marker = "platform_machine == 'x86_64'" }
 ]
 
+pyrealsense2 = { path = "vendor/pyrealsense2" }
+
 [project.optional-dependencies]
-gpu = ["onnxruntime-gpu>=1.18.0; platform_machine == 'x86_64'"] # uv sync --extra gpu
+gpu = ["onnxruntime-gpu>=1.18.0"] # uv sync --extra gpu
 robot = [
     "unitree-webrtc-connect",
     "aiortc",
