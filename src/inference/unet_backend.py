@@ -143,7 +143,7 @@ class UnetBackendTorch:
             "model": self.name,
         }
         overlay = _draw_mask_overlay(img_bgr, mask, color=self.mask_color, alpha=self.mask_alpha)
-        return result, overlay
+        return result, overlay, mask
 
 
 class UnetBackendONNX:
@@ -208,7 +208,7 @@ class UnetBackendONNX:
             "model": self.name,
         }
         overlay = _draw_mask_overlay(img_bgr, mask, color=self.mask_color, alpha=self.mask_alpha)
-        return result, overlay
+        return result, overlay, mask
 
 
 def _draw_mask_overlay(

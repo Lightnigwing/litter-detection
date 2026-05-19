@@ -9,6 +9,7 @@ class demo(msgspec.Struct, frozen=True):
 
 class Litter(msgspec.Struct, frozen=True):
     cropped: str
+    tracked_overlay: str
 
 
 class Topics(msgspec.Struct, frozen=True):
@@ -18,5 +19,8 @@ class Topics(msgspec.Struct, frozen=True):
 
 TOPICS = Topics(
     demo=demo(test="demo/test"),
-    litter=Litter(cropped="litter/cropped"),
+    litter=Litter(
+        cropped="litter/cropped",
+        tracked_overlay="litter/tracked_overlay",
+    ),
 )

@@ -46,7 +46,7 @@ def main() -> None:
         with lock:
             latest["image"] = img
 
-    subscriber = session.declare_subscriber(settings.topic_overlay, on_overlay)
+    subscriber = session.declare_subscriber("litter/tracked_overlay", on_overlay)
 
     root = tk.Tk()
     root.title("Litter Detection")

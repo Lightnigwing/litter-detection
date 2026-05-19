@@ -11,16 +11,19 @@ import numpy as np
 from loguru import logger
 from topics_pydantic_models.topics import TOPICS
 import zenoh
-from openai import AsyncOpenAI
+import httpx
 from pydantic import BaseModel
 from config import Settings
 from inference.inference_main import build_backend
+from inference.tracker import LitterTracker
 from topics_pydantic_models.pydantic_models import Point, Task2_2
 
 
 BATCH_SIZE = 4
 JPEGQUALITY = 85
-MASK_SIMILARITY_THRESHOLD = 0.85  # IoU-Schwelle für Duplikat-Erkennung
+STABLE_FRAMES_THRESHOLD = 3  # Frames, bis ein Objekt zur Validierung geschickt wird
+_OLLAMA_URL = "http://localhost:11434/api/chat"
+_OLLAMA_MODEL = "qwen2.5vl:7b"
 
 
 @dataclass
@@ -29,133 +32,86 @@ class LitterFrame:
     position: Point
 
 
+class FrameValidation(BaseModel):
+    frame_index: int
+    litter_detected: bool
+
+
 class ValidationResult(BaseModel):
-    unique_litter_indices: list[int]
+    results: list[FrameValidation]
 
 
-client = AsyncOpenAI(
-    base_url="http://localhost:11434/v1",
-    api_key="ollama",
-)
-
-
-def _crop_to_mask(
+def _crop_to_object(
     overlay: np.ndarray,
-    color_bgr: tuple[int, int, int],
-    alpha: float,
+    obj,
+    infer_size: int,
     padding: int = 20,
 ) -> np.ndarray:
-    # Per-channel range of blended pixels: blended = original*(1-alpha) + color*alpha
-    lo = np.array([int(c * alpha) for c in color_bgr], dtype=np.uint8)
-    hi = np.array([int(255 * (1 - alpha) + c * alpha) for c in color_bgr], dtype=np.uint8)
-
-    mask = cv2.inRange(overlay, lo, hi)
-    pts = cv2.findNonZero(mask)
-    if pts is None:
-        return overlay
-
-    x, y, w, h = cv2.boundingRect(pts)
     h_img, w_img = overlay.shape[:2]
-    x1 = max(0, x - padding)
-    y1 = max(0, y - padding)
-    x2 = min(w_img, x + w + padding)
-    y2 = min(h_img, y + h + padding)
+    scale_x = w_img / infer_size
+    scale_y = h_img / infer_size
+
+    x, y, w, h = obj.bbox
+    x1 = max(0, int((x - padding) * scale_x))
+    y1 = max(0, int((y - padding) * scale_y))
+    x2 = min(w_img, int((x + w + padding) * scale_x))
+    y2 = min(h_img, int((y + h + padding) * scale_y))
 
     crop = overlay[y1:y2, x1:x2].copy()
-    cv2.rectangle(crop, (x - x1, y - y1), (x - x1 + w, y - y1 + h), color_bgr, 2)
+    rx1 = int(x * scale_x) - x1
+    ry1 = int(y * scale_y) - y1
+    rx2 = int((x + w) * scale_x) - x1
+    ry2 = int((y + h) * scale_y) - y1
+    cv2.rectangle(crop, (rx1, ry1), (rx2, ry2), obj.color_bgr, 2)
     return crop
 
 
-def _extract_mask(
-    overlay: np.ndarray,
-    color_bgr: tuple[int, int, int],
-    alpha: float,
-) -> np.ndarray:
-    lo = np.array([int(c * alpha) for c in color_bgr], dtype=np.uint8)
-    hi = np.array([int(255 * (1 - alpha) + c * alpha) for c in color_bgr], dtype=np.uint8)
-    return cv2.inRange(overlay, lo, hi)
-
-
-def _masks_are_similar(mask1: np.ndarray, mask2: np.ndarray, threshold: float) -> bool:
-    union = cv2.bitwise_or(mask1, mask2)
-    union_px = int(np.count_nonzero(union))
-    if union_px == 0:
-        return True
-    iou = int(np.count_nonzero(cv2.bitwise_and(mask1, mask2))) / union_px
-    return iou >= threshold
-
-
 async def _validate_batch(batch: list[LitterFrame]) -> list[LitterFrame]:
-    content = [
-        {
-            "type": "text",
-            "text": (
-                "Analysiere die folgenden Frames auf echten Müll. "
-                "Die orange markierten Bereiche sind vom Modell erkannte Objekte. "
-                "Gib nur die Indizes zurück, die wirklich Müll enthalten (keine Fehlerkennungen). "
-                "Falls derselbe Müll in mehreren Frames vorkommt, nur den ersten Index zurückgeben. "
-                'Antwort nur als JSON: {"unique_litter_indices":[0,2]}'
-            ),
-        }
-    ]
+    images = []
+    for lf in batch:
+        ok, buf = cv2.imencode(".jpg", lf.overlay, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
+        if ok:
+            images.append(base64.b64encode(buf.tobytes()).decode())
 
-    for i, lf in enumerate(batch):
-        ok, buf = cv2.imencode(
-            ".jpg",
-            lf.overlay,
-            [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY],
-        )
+    n = len(batch)
+    prompt = (
+        f"Analysiere die {n} Bilder auf echten Müll. "
+        "Die farbig markierten Bereiche sind Modell-Erkennungen. "
+        "Antworte NUR als JSON-Array, ein Eintrag pro Bild (0-basiert). "
+        'Beispiel für 2 Bilder: {"results":[{"frame_index":0,"litter_detected":true},{"frame_index":1,"litter_detected":false}]}'
+    )
 
-        if not ok:
-            continue
-
-        b64 = base64.b64encode(buf.tobytes()).decode()
-        content.append(
+    payload = {
+        "model": _OLLAMA_MODEL,
+        "messages": [
             {
-                "type": "text",
-                "text": f"Frame {i}",
+                "role": "user",
+                "content": prompt,
+                "images": images,
             }
-        )
-        content.append(
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{b64}"
-                },
-            }
-        )
+        ],
+        "format": "json",
+        "stream": False,
+    }
 
-    logger.info("LLM-Anfrage | frames={}", len(batch))
+    logger.info("LLM-Anfrage | frames={}", n)
     t0 = time.monotonic()
-
     try:
-        response = await client.chat.completions.create(
-            model="qwen2.5vl:7b",
-            messages=[
-                {
-                    "role": "user",
-                    "content": content,
-                }
-            ],
-            response_format={"type": "json_object"},
-            temperature=0,
-        )
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(_OLLAMA_URL, json=payload)
+            if resp.status_code >= 400:
+                logger.error("Ollama Fehler {} | body={}", resp.status_code, resp.text)
+            resp.raise_for_status()
         llm_ms = (time.monotonic() - t0) * 1000
-        raw = response.choices[0].message.content
+        raw = resp.json()["message"]["content"]
         data = ValidationResult.model_validate_json(raw)
-        unique = [
-            batch[i]
-            for i in data.unique_litter_indices
-            if i < len(batch)
+        validated = [
+            batch[item.frame_index]
+            for item in data.results
+            if item.litter_detected and item.frame_index < n
         ]
-        logger.info(
-            "LLM fertig | {:.0f}ms | bestätigt={}/{}",
-            llm_ms,
-            len(unique),
-            len(batch),
-        )
-        return unique
-
+        logger.info("LLM fertig | {:.0f}ms | bestätigt={}/{}", llm_ms, len(validated), n)
+        return validated
     except Exception:
         logger.exception("LLM Fehler")
         return []
@@ -178,23 +134,10 @@ def run_task() -> Task2_2:
     processing_done = threading.Event()
     position_state: dict[str, Point] = {"current": Point(x=0.0, y=0.0)}
     position_lock = threading.Lock()
-    last_mask_state: dict[str, np.ndarray | None] = {"mask": None}
-    last_mask_lock = threading.Lock()
     run_start = time.monotonic()
 
-    """
-    def _wait_for_task2_1() -> None:
-        while True:
-            try:
-                for reply in session.get("pipeline/task2_1/done"):
-                    if reply.ok is not None:
-                        task2_1_done.set()
-                        frame_queue.put(None)  # sentinel: Frames-Sammlung beendet
-                        return
-            except Exception:
-                pass
-            time.sleep(1.0)
-    """
+    tracker = LitterTracker()
+    empty_mask = np.zeros((settings.infer_size, settings.infer_size), dtype=bool)
 
     def _wait_for_task2_1() -> None:
         time.sleep(60.0)
@@ -203,7 +146,7 @@ def run_task() -> Task2_2:
             frame_queue.qsize(),
         )
         task2_1_done.set()
-        frame_queue.put(None)  # sentinel: Frames-Sammlung beendet
+        frame_queue.put(None)
 
     threading.Thread(target=_wait_for_task2_1, daemon=True).start()
 
@@ -217,6 +160,7 @@ def run_task() -> Task2_2:
 
     pos_sub = session.declare_subscriber("robodog/system_state/odometry", _on_position)
     cropped_pub = session.declare_publisher(TOPICS.litter.cropped)
+    tracked_overlay_pub = session.declare_publisher(TOPICS.litter.tracked_overlay)
 
     def _on_frame(sample: zenoh.Sample) -> None:
         if task2_1_done.is_set():
@@ -226,35 +170,50 @@ def run_task() -> Task2_2:
         )
         if img is None:
             return
+
         t0 = time.monotonic()
-        result, overlay = backend.infer(img)
+        result, _overlay, mask = backend.infer(img)
         infer_ms = (time.monotonic() - t0) * 1000
-        if result["detections"]:
-            mask = _extract_mask(overlay, settings.mask_color_bgr, settings.mask_alpha)
-            with last_mask_lock:
-                prev_mask = last_mask_state["mask"]
-                if (
-                    prev_mask is not None
-                    and prev_mask.shape == mask.shape
-                    and _masks_are_similar(prev_mask, mask, MASK_SIMILARITY_THRESHOLD)
-                ):
-                    logger.debug(
-                        "Frame verworfen (Duplikat, IoU >= {}) | backend={:.1f}ms",
-                        MASK_SIMILARITY_THRESHOLD,
-                        infer_ms,
-                    )
-                    return
-                last_mask_state["mask"] = mask
-            cropped = _crop_to_mask(overlay, settings.mask_color_bgr, settings.mask_alpha)
-            ok, buf = cv2.imencode(".jpg", cropped, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
-            if ok:
-                cropped_pub.put(buf.tobytes(), encoding=zenoh.Encoding.IMAGE_JPEG)
-            with position_lock:
-                pos = position_state["current"]
-            frame_queue.put(LitterFrame(overlay=cropped, position=pos))
-            logger.info("Frame eingereiht | backend={:.1f}ms | queue_size={}", infer_ms, frame_queue.qsize())
-        else:
+
+        tracked = tracker.update(mask if result["detections"] else empty_mask)
+
+        if not result["detections"]:
             logger.debug("Frame verworfen (kein Müll) | backend={:.1f}ms", infer_ms)
+            return
+
+        colored_overlay = tracker.draw_overlay(img, tracked)
+
+        ok, buf = cv2.imencode(".jpg", colored_overlay, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
+        if ok:
+            tracked_overlay_pub.put(buf.tobytes(), encoding=zenoh.Encoding.IMAGE_JPEG)
+
+        with position_lock:
+            pos = position_state["current"]
+
+        queued = 0
+        for obj in tracked:
+            if obj.frames_seen >= STABLE_FRAMES_THRESHOLD and not obj.validated:
+                obj.validated = True
+                crop = _crop_to_object(colored_overlay, obj, settings.infer_size)
+                ok, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
+                if ok:
+                    cropped_pub.put(buf.tobytes(), encoding=zenoh.Encoding.IMAGE_JPEG)
+                frame_queue.put(LitterFrame(overlay=crop, position=pos))
+                queued += 1
+
+        if queued:
+            logger.info(
+                "{} Objekt(e) eingereiht | backend={:.1f}ms | queue_size={}",
+                queued,
+                infer_ms,
+                frame_queue.qsize(),
+            )
+        else:
+            logger.debug(
+                "Frame: {} Objekte getrackt, noch nicht stabil | backend={:.1f}ms",
+                len(tracked),
+                infer_ms,
+            )
 
     sub = session.declare_subscriber(settings.topic_frame, _on_frame)
 
@@ -308,10 +267,12 @@ def run_task() -> Task2_2:
     except KeyboardInterrupt:
         logger.info("Strg+C empfangen — beende sauber...")
         frame_queue.put(None)
-        processing_done.wait()  # kein Timeout — alle Frames vollständig drainieren
+        processing_done.wait()
+
     sub.undeclare()
     pos_sub.undeclare()
     cropped_pub.undeclare()
+    tracked_overlay_pub.undeclare()
     session.close()
 
     with validated_lock:

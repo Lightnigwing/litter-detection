@@ -111,7 +111,7 @@ def main() -> None:
             if img is None:
                 continue
 
-            result, overlay = backend.infer(img)
+            result, overlay, _ = backend.infer(img)
 
             if stop_event.is_set():
                 return
