@@ -30,10 +30,10 @@ class PathExecutor:
     MAX_ANGULAR_VELOCITY = 0.8
     STATUS_INTERVAL = 0.5
     BLOCKED_TIMEOUT = 5.0
-    BLOCKED_DISTANCE_THRESHOLD = 0.05
+    BLOCKED_DISTANCE_THRESHOLD = 0.1
     BLOCKED_ANGLE_THRESHOLD = math.radians(5)
-    ORIENTATION_KP = 1.2
-    HEADING_THRESHOLD = math.radians(15)
+    ORIENTATION_KP = 0.6
+    HEADING_THRESHOLD = math.radians(5)
 
     def __init__(self) -> None:
         self._path: PlannedPath | None = None

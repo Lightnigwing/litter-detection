@@ -75,7 +75,7 @@ class NavigationSegment(BaseModel):
     max_speed: float | None = None
     corridor: Corridor | None = None
     allowed_deviation: float = 0.15
-    allowed_orientation_deviation: float = 0.1
+    allowed_orientation_deviation: float = 0.3
     must_stop: bool = True
     orientation_at_target: float | None = None
     rotation_allowed_on_segment: bool = True
@@ -97,7 +97,7 @@ class PathWaypoint(BaseModel):
     is_segment_boundary: bool = False
     must_stop: bool = False
     allowed_deviation: float = 0.15
-    allowed_orientation_deviation: float = 0.1
+    allowed_orientation_deviation: float = 0.3
 
 
 class PlannedPath(BaseModel):

@@ -17,13 +17,6 @@ class Settings:
     # Robodog hardware
     go2_local_address: str = "192.168.4.201"
 
-    # Camera
-    # camera_index=0 is usually the built-in webcam, camera_index=1 is the first external webcam. Adjust as needed.
-    camera_index: int = 1
-    frame_width: int = 640
-    frame_height: int = 480
-    fps: int = 10
-    jpeg_quality: int = 85
 
     # Model
     # model_type selects the inference backend:
@@ -51,3 +44,6 @@ class Settings:
     # OpenTelemetry
     otel_endpoint: str = "http://127.0.0.1:4317"
     otel_service_name: str = "yolo-detector"
+
+    # Logging
+    task2_2_logging: bool = True
