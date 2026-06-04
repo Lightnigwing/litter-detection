@@ -26,9 +26,6 @@ dependencies = [
     "opentelemetry-instrumentation>=0.42b0",
     "eclipse-zenoh>=1.9.0",
     "ultralytics>=8.2.0",
-    "ty>=0.0.29",
-    "pre-commit>=4.6.0",
-    "onnx>=1.16.0",
     "msgspec>=0.21.1",
     "loguru>=0.7.0",
     "pydantic>=2.0.0",
@@ -36,10 +33,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pydantic-ai>=0.0.5",
     "openai>=2.34.0",
-    "unitree-webrtc-connect",
-    "aiortc",
-    "av",
-    "isort>=8.0.1",
+    "httpx>=0.27.0",
 ]
 
 [tool.uv]
@@ -53,6 +47,9 @@ required-environments = [
 [dependency-groups]
 dev = [
     "pytest>=8.2.0",
+    "ty>=0.0.29",
+    "pre-commit>=4.6.0",
+    "isort>=8.0.1",
 ]
 
 [[tool.uv.index]]
@@ -60,13 +57,20 @@ name = "pytorch-cu121"
 url = "https://download.pytorch.org/whl/cu121"
 explicit = true
 
+[[tool.uv.index]]
+name = "nvidia-jetson-jp62"
+url = "https://developer.download.nvidia.com/compute/redist/jp/v62"
+explicit = true
+
 [tool.uv.sources]
 torch = [
-    { index = "pytorch-cu121", marker = "platform_machine == 'x86_64'" }
+    { index = "pytorch-cu121", marker = "platform_machine == 'x86_64'" },
+    { index = "nvidia-jetson-jp62", marker = "sys_platform == 'linux' and platform_machine == 'aarch64'" },
 ]
 
 torchvision = [
-    { index = "pytorch-cu121", marker = "platform_machine == 'x86_64'" }
+    { index = "pytorch-cu121", marker = "platform_machine == 'x86_64'" },
+    { index = "nvidia-jetson-jp62", marker = "sys_platform == 'linux' and platform_machine == 'aarch64'" },
 ]
 
 pyrealsense2 = [
@@ -74,7 +78,6 @@ pyrealsense2 = [
 ]
 
 [project.optional-dependencies]
-gpu = ["onnxruntime-gpu>=1.18.0; platform_machine == 'x86_64'"] # uv sync --extra gpu
 robot = [
     "unitree-webrtc-connect",
     "aiortc",

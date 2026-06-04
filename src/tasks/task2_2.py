@@ -6,7 +6,6 @@ import threading
 import time
 from dataclasses import dataclass
 
-from PIL.ImageChops import overlay
 import cv2
 import numpy as np
 from loguru import logger
@@ -284,6 +283,7 @@ def run_task() -> Task2_2:
     pos_sub.undeclare()
     cropped_pub.undeclare()
     tracked_overlay_pub.undeclare()
+    litter_detections_overlay_pub.undeclare()
     session.close()
 
     with validated_lock:
