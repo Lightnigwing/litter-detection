@@ -29,7 +29,7 @@ class Settings:
     #   resnet34_unet -> "best_resnet34.pth" or "best_model.pth"
     #   effnetb4_unet -> "best_efficientnetb4.pth"
     #   effnetb3_unet -> "efficientnetB3unet_50_onnxauserhalb.pth"
-    model_path: str = "efficientnetB3unet_50_onnxauserhalb.pth"
+    model_path: str = "efficientnetB3unet_50_onnxauserhalb_final.onnx"
 
     # UNet inference
     infer_size: int = 512

@@ -6,6 +6,7 @@ import threading
 import time
 from dataclasses import dataclass
 
+from PIL.ImageChops import overlay
 import cv2
 import numpy as np
 from loguru import logger
@@ -21,7 +22,7 @@ from topics_pydantic_models.pydantic_models import Point, Task2_2
 
 BATCH_SIZE = 4
 JPEGQUALITY = 85
-STABLE_FRAMES_THRESHOLD = 3  # Frames, bis ein Objekt zur Validierung geschickt wird
+STABLE_FRAMES_THRESHOLD = 1  # Frames, bis ein Objekt zur Validierung geschickt wird
 _OLLAMA_URL = "http://localhost:11434/api/chat"
 _OLLAMA_MODEL = "qwen2.5vl:7b"
 
@@ -140,7 +141,7 @@ def run_task() -> Task2_2:
     empty_mask = np.zeros((settings.infer_size, settings.infer_size), dtype=bool)
 
     def _wait_for_task2_1() -> None:
-        time.sleep(60.0)
+        time.sleep(600.0)
         logger.info(
             "60 Sekunden abgelaufen — Frames-Sammlung beendet | queue_size={}",
             frame_queue.qsize(),
@@ -161,6 +162,7 @@ def run_task() -> Task2_2:
     pos_sub = session.declare_subscriber("robodog/system_state/odometry", _on_position)
     cropped_pub = session.declare_publisher(TOPICS.litter.cropped)
     tracked_overlay_pub = session.declare_publisher(TOPICS.litter.tracked_overlay)
+    litter_detections_overlay_pub = session.declare_publisher(TOPICS.litter.litter_detections_overlay)
 
     def _on_frame(sample: zenoh.Sample) -> None:
         if task2_1_done.is_set():
@@ -173,6 +175,13 @@ def run_task() -> Task2_2:
 
         t0 = time.monotonic()
         result, _overlay, mask = backend.infer(img)
+        ok, buf = cv2.imencode(".jpg", _overlay, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if ok:
+            litter_detections_overlay_pub.put(
+                buf.tobytes(),
+                encoding=zenoh.Encoding.IMAGE_JPEG,
+            )
+
         infer_ms = (time.monotonic() - t0) * 1000
 
         tracked = tracker.update(mask if result["detections"] else empty_mask)
@@ -268,6 +277,8 @@ def run_task() -> Task2_2:
         logger.info("Strg+C empfangen — beende sauber...")
         frame_queue.put(None)
         processing_done.wait()
+        session.close()
+        
 
     sub.undeclare()
     pos_sub.undeclare()
