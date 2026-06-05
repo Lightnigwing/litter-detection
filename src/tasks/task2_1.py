@@ -1,4 +1,5 @@
 import json
+import math
 import threading
 
 import zenoh
@@ -83,6 +84,7 @@ def run_task():
                         max_speed=0.4,
                         must_stop=True,
                         allowed_deviation=0.2,
+                        allowed_orientation_deviation=math.pi,
                     )
                 ],
             )

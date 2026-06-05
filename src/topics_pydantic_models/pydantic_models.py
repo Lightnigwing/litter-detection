@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 from typing import Any, Dict, Optional
+from typing_extensions import Annotated
+from pydantic import StringConstraints
 
 class Task1_user(BaseModel):
     x: int
