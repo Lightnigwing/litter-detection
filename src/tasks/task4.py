@@ -9,6 +9,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from interfaces.topics import TOPICS
+import matplotlib.pyplot as plt
 
 
 class OrderedPoints(BaseModel):
@@ -16,7 +17,51 @@ class OrderedPoints(BaseModel):
     points: dict[str, Point]
 
 
+def visualize_route(litter_points: dict, ordered_points: dict, current_pose: dict) -> None:
+    _, ax = plt.subplots(figsize=(10, 8))
+
+    # Startposition
+    ax.scatter([current_pose["x"]], [current_pose["y"]], marker="*", color="green",
+               s=250, zorder=5, label="Start")
+    ax.annotate("Start", (current_pose["x"], current_pose["y"]),
+                textcoords="offset points", xytext=(6, 6), fontsize=9, color="green")
+
+    # Originale Müllpunkte (unsortiert, grau)
+    for pt in litter_points.values():
+        x = pt["x"] if isinstance(pt, dict) else pt.x
+        y = pt["y"] if isinstance(pt, dict) else pt.y
+        ax.scatter([x], [y], marker="x", color="gray", s=80, zorder=3, alpha=0.5)
+
+    # Optimierte Route
+    route_x = [current_pose["x"]]
+    route_y = [current_pose["y"]]
+    for i, (_, pt) in enumerate(ordered_points.items(), 1):
+        x, y = pt.x, pt.y
+        route_x.append(x)
+        route_y.append(y)
+        ax.scatter([x], [y], marker="o", color="steelblue", s=80, zorder=5)
+        ax.annotate(str(i), (x, y), textcoords="offset points", xytext=(5, 5), fontsize=8)
+
+    total_dist = sum(
+        ((route_x[i + 1] - route_x[i]) ** 2 + (route_y[i + 1] - route_y[i]) ** 2) ** 0.5
+        for i in range(len(route_x) - 1)
+    )
+
+    ax.plot(route_x, route_y, color="steelblue", linewidth=1.5,
+            label=f"Optimierte Route ({len(ordered_points)} Punkte, {total_dist:.1f} m)")
+
+    ax.set_title(f"Task4 – Optimierte Müllsammel-Route")
+    ax.set_xlabel("X [m]")
+    ax.set_ylabel("Y [m]")
+    ax.legend()
+    ax.grid(True, alpha=0.4)
+    ax.set_aspect("equal")
+    plt.tight_layout()
+    plt.show()
+
+
 def run_task():
+    """""
     # Initialisiert Zenoh-Session
     settings = Settings()
     conf = zenoh.Config()
@@ -55,14 +100,24 @@ def run_task():
                 break
         except Exception:
             pass
-        
+
         if attempt < max_attempts - 1:
             time.sleep(0.5)
-    
+
     if current_pose is None:
         print("[TASK4] ERROR: Konnte aktuelle Position vom Odometry-Topic nicht lesen!")
         session.close()
         raise RuntimeError("task4: Position konnte nicht gelesen werden")
+    """""
+
+    litter_points = {
+        "point1": {"x": 5.0, "y": 3.0},
+        "point2": {"x": 7.0, "y": 1.0},
+        "point3": {"x": 5.0, "y": 8.0},
+        "point4": {"x": 1.0, "y": 6.0},
+        "point5": {"x": 2.0, "y": 4.0},
+    }
+    current_pose = {"x": 7.0, "y": 8.0}
 
     result = None
 
@@ -81,7 +136,7 @@ def run_task():
 
             route_planner_agent = Agent(
                 model,
-                result_type=OrderedPoints,
+                output_type=OrderedPoints,
                 system_prompt=(
                     "Du bist ein intelligenter Router für einen Hund-Roboter. "
                     "Der Roboter startet bei seiner aktuellen Position und muss alle Müllpunkte besuchen. "
@@ -92,7 +147,6 @@ def run_task():
                 ),
             )
 
-
             user_prompt = (
                 f"Aktuelle Position: x={current_pose['x']}, y={current_pose['y']}. "
                 f"Müllpunkte: {json.dumps(litter_points)}. "
@@ -100,18 +154,23 @@ def run_task():
             )
 
             result_agent = route_planner_agent.run_sync(user_prompt)
-            ordered: OrderedPoints = result_agent.data
+            ordered: OrderedPoints = result_agent.output
 
             print(f"[TASK4] Agent geplant: {len(ordered.points)} Punkte in optimierter Reihenfolge")
 
-            # Durchnumeriere die Punkte von 1 an (wie in task1)
+            # Durchnumeriere die Punkte von 1 an
             points_dict = {}
             for i, point in enumerate(ordered.points.values(), 1):
                 points_dict[f"point{i}"] = point
 
             result = Task4(litter_points=points_dict)
 
+            visualize_route(litter_points, result.litter_points, current_pose)
+
             return result
         finally:
-            session.close()
+            pass  # session.close() — kein Zenoh im Testmodus
 
+
+if __name__ == "__main__":
+    run_task()
