@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 data/
 mlruns/
+mlflow_agent.db
 findings.md
 .DS_Store
 # generic training checkpoint (named checkpoints are tracked)
