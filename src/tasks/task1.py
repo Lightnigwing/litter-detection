@@ -1,16 +1,14 @@
 import asyncio
 import json
-from os import name
 import time
 from pathlib import Path
 from config import Settings
-from topics_pydantic_models.pydantic_models import Point, Task1_points, SearchPath
+from topics_pydantic_models.pydantic_models import Task1_points, SearchPath
 import zenoh
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 import mlflow
-import matplotlib.pyplot as plt
 
 
 def _make_positions(limit: float) -> list[float]:
@@ -24,60 +22,6 @@ def _make_positions(limit: float) -> list[float]:
     return positions
 
 
-def _optimal_path(field_x: float, field_y: float) -> list[tuple[float, float]]:
-    path: list[tuple[float, float]] = []
-    if field_x <= field_y:
-        for i, xp in enumerate(_make_positions(field_x)):
-            if i % 2 == 0:
-                path.append((xp, 0.0))
-                path.append((xp, field_y))
-            else:
-                path.append((xp, field_y))
-                path.append((xp, 0.0))
-    else:
-        for i, yp in enumerate(_make_positions(field_y)):
-            if i % 2 == 0:
-                path.append((0.0, yp))
-                path.append((field_x, yp))
-            else:
-                path.append((field_x, yp))
-                path.append((0.0, yp))
-    return path
-
-
-def visualize_path(points: list[Point], field_x: float, field_y: float) -> None:
-    x_vals = [p.x for p in points]
-    y_vals = [p.y for p in points]
-    optimal = _optimal_path(field_x, field_y)
-    ox_vals = [p[0] for p in optimal]
-    oy_vals = [p[1] for p in optimal]
-
-    _, ax = plt.subplots(figsize=(max(6, field_x + 2), max(6, field_y + 2)))
-
-    rect = plt.Polygon(
-        [(0, 0), (field_x, 0), (field_x, field_y), (0, field_y)],
-        fill=False, edgecolor="gray", linewidth=1.5, linestyle="--"
-    )
-    ax.add_patch(rect)
-
-    ax.plot(ox_vals, oy_vals, marker=".", color="red", linewidth=1.2,
-            markersize=4, linestyle="--", alpha=0.6, label="Optimal")
-    ax.plot(x_vals, y_vals, marker="o", color="steelblue", linewidth=1.5,
-            markersize=5, label="Agent")
-
-    for idx, (x, y) in enumerate(zip(x_vals, y_vals), start=1):
-        ax.annotate(str(idx), (x, y), textcoords="offset points", xytext=(5, 5), fontsize=8)
-
-    ax.set_xlim(-0.5, field_x + 0.5)
-    ax.set_ylim(-0.5, field_y + 0.5)
-    ax.set_title(f"Roboterpfad  ({field_x} x {field_y} m)  —  Agent: {len(points)} Pkt,  Optimal: {len(optimal)} Pkt")
-    ax.set_xlabel("X [m]")
-    ax.set_ylabel("Y [m]")
-    ax.legend()
-    ax.grid(True, alpha=0.4)
-    ax.set_aspect("equal")
-    plt.tight_layout()
-    plt.show()
 
 _MLFLOW_AGENT_DB = Path(__file__).parent.parent / "mlflow_agent.db"
 MAX_RETRIES = 3
@@ -101,14 +45,21 @@ def run_task():
         mlflow.set_experiment("task1-agent")
     except Exception:
         pass
-    """""
+
     replies = session.get("pipeline/task1/start")
+    data_reply = None
     for reply in replies:
         data_reply = json.loads(reply.ok.payload.to_bytes())
-    data = json.loads(data_reply["data"]) """""
 
+    if data_reply is None:
+        session.close()
+        raise RuntimeError("task1: kein task1/start Reply erhalten")
+
+    data = json.loads(data_reply["data"])
+
+    """""
     data = {"x": 8,"y": 18}
-
+    """""
     print(f"[TASK1] Received data: {data}")
 
     provider = OpenAIProvider(base_url="http://localhost:11434/v1", api_key="ollama")
@@ -116,7 +67,7 @@ def run_task():
     agent = Agent(
         model,
         output_type=SearchPath,
-        retries=3,
+        output_retries=3,
         system_prompt=(
             "# ROLLE\n"
             "Du bist ein deterministischer Pfadplaner fuer einen autonomen "
@@ -234,7 +185,6 @@ def run_task():
                 )
                 status = "success"
                 print(f"[TASK1] Agent fertig in {elapsed:.2f}s, {len(search_path.points)} Punkte, {search_path.points}")
-                visualize_path(search_path.points, data["x"], data["y"])
                 break
             except asyncio.TimeoutError:
                 status = "timeout"
@@ -255,5 +205,7 @@ def run_task():
     session.close()
     return result
 
+"""""
 if __name__ == "__main__":
     run_task()
+"""""
