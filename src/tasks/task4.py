@@ -132,7 +132,7 @@ def run_task():
                 base_url="http://localhost:11434/v1",
                 api_key="ollama",
             )
-            model = OpenAIChatModel("gemma4:e4b", provider=provider)
+            model = OpenAIChatModel("qwen2.5:7b", provider=provider)
 
             route_planner_agent = Agent(
                 model,
