@@ -5,7 +5,7 @@ Jonas Schweiss
 **Prompt wurde verwendet für:**
 Research: []
 Coding: [x]
-Thema: Interference einbauen in task
+Thema: Wheels für pytorch und torchvision bauen
 
 # Benutztes KI-Tool
 **Name:**  Claude
@@ -23,11 +23,11 @@ Sage mir welche befehle du brauchst um die richtigen wheels für torch zu bestim
 
 
 ## Antwort der KI
-Kompletette task2_2
+Die wheels für pytorch und torchvison bzw die Befehle bzw Anleitung was ich tun musste
 
 
 ## Wofür wurde die Antwort genutzt und inwiefern wurde sie überarbeitet ?
-Antwort wird für Prototype genutzt, es wurde vorallem der Plan überarbeitet und logisch einmal der code angeschaut, testen wie gut er funktioniert, auch in hinsicht Latenz passiert Vorort
+Wurde genutzt um die wheels zu erstellen, es hat gedauert und der Prompt musste mit mehr informationen gefüttert werden
 
 # Reflexion
 
@@ -69,8 +69,8 @@ Antwort wird für Prototype genutzt, es wurde vorallem der Plan überarbeitet un
 
 **Qualität vom Code:**
 - [] 1: Code wird verworfen
-- [] 2: Code muss in großen Teilen überarbeitet werden (ggf. Prompt überarbeiten)
-- [X] 3: Code braucht kaum noch manuelle Nachbearbeitung
+- [X] 2: Code muss in großen Teilen überarbeitet werden (ggf. Prompt überarbeiten)
+- [] 3: Code braucht kaum noch manuelle Nachbearbeitung
 
 **Verständlichkeit des Codes (Struktur, verwendete Tools):**
 - [] 1: Code nicht einfach verständlich, nur mit erneutem Nachfragen ansatzweise verständlich
@@ -84,4 +84,4 @@ Antwort wird für Prototype genutzt, es wurde vorallem der Plan überarbeitet un
 
 
 ## Kurze persönliche Reflexion 
-Erste mal Claude benutzt, deswegen noch nicht so vertraut damit. Denn Code denn er das erste mal gemacht hat war ganz gut, habe ihn aber noch mit ein paar promps nachgearbeitet, damit er verständlicher ist. usste auch einige Sachen nachfragen
+Claude war notwendig, da ich mich mit Linux wenig auskenne und nicht weis wie man die wheels custom baut. Es hat gedauert bis die wheels die richtigen waren, es musste immer wieder nachgeholfen werden, u.a. hat claude am Anfang Links geraten, was gedauert habe bis ich darauf gekommen bin

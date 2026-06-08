@@ -136,6 +136,10 @@ def run_task() -> Task2_2:
     position_lock = threading.Lock()
     run_start = time.monotonic()
 
+    # Latest-only slot: callback writes, inference worker reads and clears
+    latest_lock = threading.Lock()
+    latest_frame: dict = {"data": None}
+
     tracker = LitterTracker()
     empty_mask = np.zeros((settings.infer_size, settings.infer_size), dtype=bool)
 
@@ -146,7 +150,6 @@ def run_task() -> Task2_2:
             frame_queue.qsize(),
         )
         task2_1_done.set()
-        frame_queue.put(None)
 
     threading.Thread(target=_wait_for_task2_1, daemon=True).start()
 
@@ -166,62 +169,76 @@ def run_task() -> Task2_2:
     def _on_frame(sample: zenoh.Sample) -> None:
         if task2_1_done.is_set():
             return
-        img = cv2.imdecode(
-            np.frombuffer(bytes(sample.payload), np.uint8), cv2.IMREAD_COLOR
-        )
-        if img is None:
-            return
+        with latest_lock:
+            latest_frame["data"] = bytes(sample.payload)
 
-        t0 = time.monotonic()
-        result, _overlay, mask = backend.infer(img)
-        ok, buf = cv2.imencode(".jpg", _overlay, [cv2.IMWRITE_JPEG_QUALITY, 85])
-        if ok:
-            litter_detections_overlay_pub.put(
-                buf.tobytes(),
-                encoding=zenoh.Encoding.IMAGE_JPEG,
-            )
+    def _inference_worker() -> None:
+        while not task2_1_done.is_set():
+            with latest_lock:
+                data = latest_frame["data"]
+                latest_frame["data"] = None
+            if data is None:
+                time.sleep(0.005)
+                continue
 
-        infer_ms = (time.monotonic() - t0) * 1000
+            img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+            if img is None:
+                continue
 
-        tracked = tracker.update(mask if result["detections"] else empty_mask)
+            t0 = time.monotonic()
+            result, _overlay, mask = backend.infer(img)
+            ok, buf = cv2.imencode(".jpg", _overlay, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if ok:
+                litter_detections_overlay_pub.put(
+                    buf.tobytes(),
+                    encoding=zenoh.Encoding.IMAGE_JPEG,
+                )
 
-        if not result["detections"]:
-            logger.debug("Frame verworfen (kein Müll) | backend={:.1f}ms", infer_ms)
-            return
+            infer_ms = (time.monotonic() - t0) * 1000
 
-        colored_overlay = tracker.draw_overlay(img, tracked)
+            tracked = tracker.update(mask if result["detections"] else empty_mask)
 
-        ok, buf = cv2.imencode(".jpg", colored_overlay, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
-        if ok:
-            tracked_overlay_pub.put(buf.tobytes(), encoding=zenoh.Encoding.IMAGE_JPEG)
+            if not result["detections"]:
+                logger.debug("Frame verworfen (kein Müll) | backend={:.1f}ms", infer_ms)
+                continue
 
-        with position_lock:
-            pos = position_state["current"]
+            colored_overlay = tracker.draw_overlay(img, tracked)
 
-        queued = 0
-        for obj in tracked:
-            if obj.frames_seen >= STABLE_FRAMES_THRESHOLD and not obj.validated:
-                obj.validated = True
-                crop = _crop_to_object(colored_overlay, obj, settings.infer_size)
-                ok, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
-                if ok:
-                    cropped_pub.put(buf.tobytes(), encoding=zenoh.Encoding.IMAGE_JPEG)
-                frame_queue.put(LitterFrame(overlay=crop, position=pos))
-                queued += 1
+            ok, buf = cv2.imencode(".jpg", colored_overlay, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
+            if ok:
+                tracked_overlay_pub.put(buf.tobytes(), encoding=zenoh.Encoding.IMAGE_JPEG)
 
-        if queued:
-            logger.info(
-                "{} Objekt(e) eingereiht | backend={:.1f}ms | queue_size={}",
-                queued,
-                infer_ms,
-                frame_queue.qsize(),
-            )
-        else:
-            logger.debug(
-                "Frame: {} Objekte getrackt, noch nicht stabil | backend={:.1f}ms",
-                len(tracked),
-                infer_ms,
-            )
+            with position_lock:
+                pos = position_state["current"]
+
+            queued = 0
+            for obj in tracked:
+                if obj.frames_seen >= STABLE_FRAMES_THRESHOLD and not obj.validated:
+                    obj.validated = True
+                    crop = _crop_to_object(colored_overlay, obj, settings.infer_size)
+                    ok, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
+                    if ok:
+                        cropped_pub.put(buf.tobytes(), encoding=zenoh.Encoding.IMAGE_JPEG)
+                    frame_queue.put(LitterFrame(overlay=crop, position=pos))
+                    queued += 1
+
+            if queued:
+                logger.info(
+                    "{} Objekt(e) eingereiht | backend={:.1f}ms | queue_size={}",
+                    queued,
+                    infer_ms,
+                    frame_queue.qsize(),
+                )
+            else:
+                logger.debug(
+                    "Frame: {} Objekte getrackt, noch nicht stabil | backend={:.1f}ms",
+                    len(tracked),
+                    infer_ms,
+                )
+
+        frame_queue.put(None)
+
+    threading.Thread(target=_inference_worker, daemon=True).start()
 
     sub = session.declare_subscriber(settings.topic_frame, _on_frame)
 

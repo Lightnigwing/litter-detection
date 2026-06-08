@@ -27,12 +27,11 @@ Aufräumen der pyproject.toml und Entfernen aller nicht genutzten Bibliotheken.
 Erstelle dafür einen Plan. Falls du Fragen zur Software auf dem Jetson hast, stelle diese bitte bevor du den Plan finalisierst.
 
 ## Antwort der KI
-Kompletette task2_2
+Hat die alten onnxruntime sachen entfernt
 
 
 ## Wofür wurde die Antwort genutzt und inwiefern wurde sie überarbeitet ?
-Antwort wird für Prototype genutzt, es wurde vorallem der Plan überarbeitet und logisch einmal der code angeschaut, testen wie gut er funktioniert, auch in hinsicht Latenz passiert Vorort
-
+Es ging darum die onnxruntime Sachen und ungenutzte librarys zu entfernen, bei den entfernten librarys wurde gegengescheckt ob es wirklich net mehr gebraucht wird
 # Reflexion
 
 ## Evaluation der Antwort anhand von Bewertungskriterien
@@ -73,8 +72,8 @@ Antwort wird für Prototype genutzt, es wurde vorallem der Plan überarbeitet un
 
 **Qualität vom Code:**
 - [] 1: Code wird verworfen
-- [] 2: Code muss in großen Teilen überarbeitet werden (ggf. Prompt überarbeiten)
-- [X] 3: Code braucht kaum noch manuelle Nachbearbeitung
+- [X] 2: Code muss in großen Teilen überarbeitet werden (ggf. Prompt überarbeiten)
+- [] 3: Code braucht kaum noch manuelle Nachbearbeitung
 
 **Verständlichkeit des Codes (Struktur, verwendete Tools):**
 - [] 1: Code nicht einfach verständlich, nur mit erneutem Nachfragen ansatzweise verständlich
@@ -83,9 +82,9 @@ Antwort wird für Prototype genutzt, es wurde vorallem der Plan überarbeitet un
 
 **Erklärungen des Codes (wenn gewünscht im Prompt):**
 - [] 1: Erklärungen komplett nutzlos
-- [x] 2: Erklärungen helfen nur teilweise
-- [] 3: Erklärungen erklären alles
+- [] 2: Erklärungen helfen nur teilweise
+- [x] 3: Erklärungen erklären alles
 
 
 ## Kurze persönliche Reflexion 
-Erste mal Claude benutzt, deswegen noch nicht so vertraut damit. Denn Code denn er das erste mal gemacht hat war ganz gut, habe ihn aber noch mit ein paar promps nachgearbeitet, damit er verständlicher ist. usste auch einige Sachen nachfragen
+Es war einfacher das Claude einmal das Projekt durchschaut alls, es alles manuel zu machen
