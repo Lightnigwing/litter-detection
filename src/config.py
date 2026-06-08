@@ -5,8 +5,8 @@ from dataclasses import dataclass
 
 @dataclass
 class Settings:
-    # Zenoh
-    zenoh_router: str = "tcp/localhost:7447"
+    # Zenoh localhost
+    zenoh_router: str = "tcp/192.168.178.74:7447"
     zenoh_shared_memory: bool = False
     topic_frame: str = "litter/frame"
     topic_detections: str = "litter/detections"
