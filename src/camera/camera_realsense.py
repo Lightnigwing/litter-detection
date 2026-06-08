@@ -14,7 +14,7 @@ JPEGQUALITY = 95
 
 WIDTH_RGB = 1280
 HEIGHT_RGB = 720
-FPS_RGB = 30
+FPS_RGB = 15
 
 WIDTH_DEPTH = 1280
 HEIGHT_DEPTH = 720
@@ -147,7 +147,7 @@ def main():
                 cv2.convertScaleAbs(depth_image, alpha=0.03), cv2.COLORMAP_JET
             )
             jpeg_depth = encode_img_jpeg(depth_colormap, jpeg_quality)
-            z_pub_depth.put(jpeg_depth.tobytes())
+            #z_pub_depth.put(jpeg_depth.tobytes())
 
             # Get RGB image
             rgb_image = np.asanyarray(color_frame.get_data())
