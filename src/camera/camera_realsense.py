@@ -14,11 +14,11 @@ JPEGQUALITY = 95
 
 WIDTH_RGB = 1280
 HEIGHT_RGB = 720
-FPS_RGB = 30
+FPS_RGB = 6
 
 WIDTH_DEPTH = 1280
 HEIGHT_DEPTH = 720
-FPS_DEPTH = 30
+FPS_DEPTH = 6
 
 class Intrinsics(BaseModel):
     width: int

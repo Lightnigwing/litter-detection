@@ -88,28 +88,6 @@ def load_meta() -> dict:
         return json.loads(p.read_text())
     return {}
 
-def export_onnx(model, device, path="model.onnx"):
-    model = model.cpu()
-    model.eval()
-
-    with torch.no_grad():
-        dummy_input = torch.randn(1, 3, CROP_SIZE, CROP_SIZE)
-
-        torch.onnx.export(
-            model,
-            dummy_input,
-            path,
-            input_names=["input"],
-            output_names=["output"],
-            opset_version=17,
-            dynamic_axes={
-                "input": {0: "batch_size"},
-                "output": {0: "batch_size"}
-            }
-        )
-
-    print(f"[INFO] ONNX model exported to {path}")
-
 
 class LitterDataset(Dataset):
     def __init__(self, split: str, crop_size: int = CROP_SIZE, augment: bool = True):
@@ -598,12 +576,6 @@ def train(run_name: str):
 
         mlflow.log_metric("best_val_iou", best_val_iou)
         print(f"\nBest val_iou: {best_val_iou:.4f}")
-        print("Exporting final ONNX...")
-
-        model.load_state_dict(torch.load(pth_path))
-        export_onnx(model, device, f"{run_name}_final.onnx")
-
-        mlflow.log_artifact(f"{run_name}_final.onnx")
         print("Run complete.")
 
 
