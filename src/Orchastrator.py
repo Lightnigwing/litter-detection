@@ -1,6 +1,9 @@
 import os
+import shutil
+import signal
 import subprocess
 import sys
+from pathlib import Path
 from topics_pydantic_models.pydantic_models import Task1_user
 import zenoh
 import yaml
@@ -63,30 +66,70 @@ def on_done(sample):
 
 session.declare_subscriber("pipeline/*/done", on_done)
 
+
+_TMUX_SESSION = "litter-orch"
+
+
+class TmuxProcess:
+    """Wraps a process launched in a tmux window; satisfies .terminate()/.wait()."""
+
+    def __init__(self, session: str, window: str) -> None:
+        time.sleep(0.3)
+        r = subprocess.run(
+            ["tmux", "display-message", "-p", "-t", f"{session}:{window}", "#{pane_pid}"],
+            capture_output=True, text=True,
+        )
+        self._pid = int(r.stdout.strip())
+
+    def terminate(self) -> None:
+        try:
+            os.kill(self._pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+
+    def wait(self) -> None:
+        while True:
+            try:
+                os.kill(self._pid, 0)
+                time.sleep(0.1)
+            except ProcessLookupError:
+                return
+
+
+def _spawn(name: str, module: str, cwd: str):
+    args = [sys.executable, "-m", module]
+
+    if sys.platform == "win32":
+        return subprocess.Popen(args, cwd=cwd, creationflags=subprocess.CREATE_NEW_CONSOLE)
+
+    if shutil.which("tmux"):
+        subprocess.run(["tmux", "new-session", "-d", "-s", _TMUX_SESSION], capture_output=True)
+        subprocess.run(
+            ["tmux", "new-window", "-d", "-t", _TMUX_SESSION, "-n", name,
+             f"cd {cwd} && {' '.join(args)}"],
+        )
+        return TmuxProcess(_TMUX_SESSION, name)
+
+    log_dir = Path(cwd).parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_path = log_dir / f"{name}.log"
+    log_fh = open(log_path, "w")
+    print(f"[ORCH] {name} → {log_path}")
+    return subprocess.Popen(args, cwd=cwd, stdout=log_fh, stderr=log_fh)
+
+
 # Main loop: start tasks as soon as their dependencies are done, ends when all tasks are done
 def main():
     # Worker, NavManager und Pose-Source starten
     src_dir = os.path.join(os.getcwd(), "src")
-    worker = subprocess.Popen(
-        [sys.executable, "-m", "worker"], cwd=src_dir
-    )
-    #cam_proc = subprocess.Popen(
-    #    [sys.executable, "-m", "camera.camera_realsense"], cwd=src_dir
-    #)
-    nav_proc = subprocess.Popen(
-        [sys.executable, "-m", "nav.nav_manager"], cwd=src_dir
-    )
+    worker = subprocess.Popen([sys.executable, "-m", "worker"], cwd=src_dir)
+    cam_proc = _spawn("camera", "camera.camera_realsense", src_dir)
+    nav_proc = _spawn("nav_manager", "nav.nav_manager", src_dir)
     robot_mode = os.environ.get("LITTER_ROBOT_MODE", "real")
     if robot_mode == "real":
-        # Echter Go2: robodog-Bridge übernimmt Odometry über WebRTC
-        pose_proc = subprocess.Popen(
-            [sys.executable, "-m", "robodog.main"], cwd=src_dir
-        )
+        pose_proc = _spawn("robodog", "robodog.main", src_dir)
     else:
-        # Mock: integriert MovementCommands zu einer Pose
-        pose_proc = subprocess.Popen(
-            [sys.executable, "-m", "nav.mock_odometry"], cwd=src_dir
-        )
+        pose_proc = _spawn("mock_odometry", "nav.mock_odometry", src_dir)
     print(f"[ORCH] Robot mode: {robot_mode}")
     time.sleep(5)
     
@@ -133,7 +176,7 @@ def main():
 
     session.close()
     #cam_proc
-    for proc in (worker, nav_proc, pose_proc):
+    for proc in (worker, nav_proc, pose_proc, cam_proc):
         proc.terminate()
         proc.wait()
         

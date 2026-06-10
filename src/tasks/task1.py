@@ -3,12 +3,11 @@ import json
 import time
 from pathlib import Path
 from config import Settings
-from topics_json.Task_json import Point, Task1_points
+from topics_pydantic_models.pydantic_models import Task1_points, SearchPath
 import zenoh
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
-from topics_json.Task_json import SearchPath
 import mlflow
 
 
@@ -33,25 +32,6 @@ async def _run_attempt(agent: Agent, prompt: str) -> tuple[SearchPath, float]:
     time_start = time.time()
     result_agent = await asyncio.wait_for(agent.run(prompt), timeout=AGENT_TIMEOUT)
     return result_agent.output, time.time() - time_start
-
-
-from pydantic import BaseModel
-from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
-
-
-class PathPoint(BaseModel):
-    """Ein Punkt im Suchpfad."""
-    name: str
-    x: float
-    y: float
-
-
-class SearchPath(BaseModel):
-    """Der geplante Suchpfad mit mehreren Punkten."""
-    points: list[PathPoint]
-    description: str
 
 
 def run_task():
@@ -224,8 +204,3 @@ def run_task():
 
     session.close()
     return result
-
-"""""
-if __name__ == "__main__":
-    run_task()
-"""""

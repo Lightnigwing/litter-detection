@@ -40,7 +40,7 @@ class NavManager:
         self.z_session = zenoh.open(self.settings.zenoh_config)
 
         self.planner = PathPlannerModule(self.config)
-        self.executor = PathExecutor(self.config)
+        self.executor = PathExecutor()
 
         # Publishers
         self.z_pub_vel = self.z_session.declare_publisher(

@@ -1,5 +1,10 @@
-from pydantic import BaseModel
-from typing import Any, Dict, Optional
+from pydantic import BaseModel, StringConstraints
+from typing import Dict, Annotated
+
+PointKey = Annotated[
+    str,
+    StringConstraints(pattern=r"^point\d+$")
+]
 
 class Task1_user(BaseModel):
     x: int
