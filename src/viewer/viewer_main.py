@@ -1,8 +1,8 @@
 """Viewer — subscribes to all litter image topics and shows them in a tkinter grid.
 
 Layout (3 columns x 2 rows):
-  Frame | Depth | Cropped
-  Overlay | Tracked Overlay | Detections
+  Frame | Litter Detection Overlay | Validated
+  Depth | Tracked Overlay          | Cropped
 """
 
 import io
@@ -29,12 +29,12 @@ logger = logging.getLogger("viewer")
 settings = Settings()
 
 TOPICS = [
-    ("litter/frame",           "Frame"),
-    ("litter/frame_depth",     "Depth"),
-    ("litter/cropped",         "Cropped"),
-    ("litter/overlay",         "Overlay"),
-    ("litter/tracked_overlay", "Tracked Overlay"),
-    ("litter/litter_detections_overlay",      "litter_detections_overlay"),
+    ("litter/frame",                     "Frame"),
+    ("litter/litter_detections_overlay", "Litter Detection Overlay"),
+    ("litter/validated",                 "Validated"),
+    ("litter/frame_depth",               "Depth"),
+    ("litter/tracked_overlay",           "Tracked Overlay"),
+    ("litter/cropped",                   "Cropped"),
 ]
 
 COLS = 3
