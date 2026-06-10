@@ -19,11 +19,11 @@ from inference.tracker import LitterTracker
 from topics_pydantic_models.pydantic_models import Point, Task2_2
 
 
-BATCH_SIZE = 4
+BATCH_SIZE = 1
 JPEGQUALITY = 85
 STABLE_FRAMES_THRESHOLD = 1  # Frames, bis ein Objekt zur Validierung geschickt wird
 _OLLAMA_URL = "http://localhost:11434/api/chat"
-_OLLAMA_MODEL = "qwen2.5vl:7b"
+_OLLAMA_MODEL = "llava-phi3"
 
 
 @dataclass
@@ -92,6 +92,7 @@ async def _validate_batch(batch: list[LitterFrame]) -> list[LitterFrame]:
         ],
         "format": "json",
         "stream": False,
+        "options": {"num_ctx": 8192},
     }
 
     logger.info("LLM-Anfrage | frames={}", n)
@@ -165,6 +166,7 @@ def run_task() -> Task2_2:
     cropped_pub = session.declare_publisher(TOPICS.litter.cropped)
     tracked_overlay_pub = session.declare_publisher(TOPICS.litter.tracked_overlay)
     litter_detections_overlay_pub = session.declare_publisher(TOPICS.litter.litter_detections_overlay)
+    validated_pub = session.declare_publisher(TOPICS.litter.validated)
 
     def _on_frame(sample: zenoh.Sample) -> None:
         if task2_1_done.is_set():
@@ -199,7 +201,7 @@ def run_task() -> Task2_2:
             tracked = tracker.update(mask if result["detections"] else empty_mask)
 
             if not result["detections"]:
-                logger.debug("Frame verworfen (kein Müll) | backend={:.1f}ms", infer_ms)
+                #logger.debug("Frame verworfen (kein Müll) | backend={:.1f}ms", infer_ms)
                 continue
 
             colored_overlay = tracker.draw_overlay(img, tracked)
@@ -267,6 +269,10 @@ def run_task() -> Task2_2:
                 with validated_lock:
                     validated_litter.extend(validated)
                     total = len(validated_litter)
+                for lf in validated:
+                    ok, buf = cv2.imencode(".jpg", lf.overlay, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
+                    if ok:
+                        validated_pub.put(buf.tobytes(), encoding=zenoh.Encoding.IMAGE_JPEG)
                 logger.info(
                     "Batch abgeschlossen | {:.0f}ms | bestätigt={}/{} | gesamt_litter={}",
                     batch_ms, len(validated), len(batch), total,
@@ -301,6 +307,7 @@ def run_task() -> Task2_2:
     cropped_pub.undeclare()
     tracked_overlay_pub.undeclare()
     litter_detections_overlay_pub.undeclare()
+    validated_pub.undeclare()
     session.close()
 
     with validated_lock:

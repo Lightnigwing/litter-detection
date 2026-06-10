@@ -11,6 +11,7 @@ class Litter(msgspec.Struct, frozen=True):
     cropped: str
     tracked_overlay: str
     litter_detections_overlay: str
+    validated: str
 
 
 class Topics(msgspec.Struct, frozen=True):
@@ -24,5 +25,6 @@ TOPICS = Topics(
         cropped="litter/cropped",
         tracked_overlay="litter/tracked_overlay",
         litter_detections_overlay="litter/litter_detections_overlay",
+        validated="litter/validated",
     ),
 )
