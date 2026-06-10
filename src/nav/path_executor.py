@@ -221,7 +221,8 @@ class PathExecutor:
     ORIENTATION_KP = 1.2
     HEADING_THRESHOLD = math.radians(15)
 
-    def __init__(self) -> None:
+    def __init__(self, config: NavConfig | None = None) -> None:
+        self._config: NavConfig = config or NavConfig()
         self._path: PlannedPath | None = None
         self._segment_index: int = 0
         self._start_pose: Pose2D | None = None  # snapshot of pose at set_path's first tick

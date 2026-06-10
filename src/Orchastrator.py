@@ -133,33 +133,15 @@ def main():
     print(f"[ORCH] Robot mode: {robot_mode}")
     time.sleep(5)
     
-    user_input_x, user_input_y = None, None
-
-    # Initial data for Task1
-    while user_input_x is None or user_input_y is None:
-        try:
-            user_input_x, user_input_y = map(int, input("Gib x und y ein: ").split())
-        except ValueError:
-            print("Ungültige Eingabe. Bitte gib zwei ganze Zahlen ein, getrennt durch ein Leerzeichen.")
-        except KeyboardInterrupt:
-            print("\nAbbruch durch Benutzer (Strg+C).")
-            session.close()
-            break
-
-    initial_data = Task1_user(
-        x=user_input_x, 
-        y=user_input_y
-        )
-    
-    # Start Task1 with initial data
-    session.put(f"pipeline/task1/start", json.dumps({
-        "task_id": "task1",
+    # Start Task0
+    session.put(f"pipeline/task0/start", json.dumps({
+        "task_id": "task0",
         "run_id": run_id,
         "status": "start",
-        "data": initial_data.model_dump_json()
+        "data": {}
     }))
 
-    started.add("task1")
+    started.add("task0")
 
     while len(done) < len(tasks):
         try:
