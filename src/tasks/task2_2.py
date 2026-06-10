@@ -19,7 +19,7 @@ from inference.tracker import LitterTracker
 from topics_pydantic_models.pydantic_models import Point, Task2_2
 
 
-BATCH_SIZE = 1
+BATCH_SIZE = 2
 JPEGQUALITY = 85
 STABLE_FRAMES_THRESHOLD = 1  # Frames, bis ein Objekt zur Validierung geschickt wird
 _OLLAMA_URL = "http://localhost:11434/api/chat"
