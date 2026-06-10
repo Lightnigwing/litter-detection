@@ -35,6 +35,25 @@ async def _run_attempt(agent: Agent, prompt: str) -> tuple[SearchPath, float]:
     return result_agent.output, time.time() - time_start
 
 
+from pydantic import BaseModel
+from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
+
+
+class PathPoint(BaseModel):
+    """Ein Punkt im Suchpfad."""
+    name: str
+    x: float
+    y: float
+
+
+class SearchPath(BaseModel):
+    """Der geplante Suchpfad mit mehreren Punkten."""
+    points: list[PathPoint]
+    description: str
+
+
 def run_task():
     settings = Settings()
     conf = zenoh.Config()
