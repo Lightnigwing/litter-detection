@@ -3,12 +3,12 @@ import json
 import time
 from pathlib import Path
 from config import Settings
-from topics_pydantic_models.pydantic_models import Point, Task1_points
+from topics_json.Task_json import Point, Task1_points
 import zenoh
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
-from topics_pydantic_models.pydantic_models import SearchPath
+from topics_json.Task_json import SearchPath
 import mlflow
 
 
@@ -26,7 +26,7 @@ def _make_positions(limit: float) -> list[float]:
 
 _MLFLOW_AGENT_DB = Path(__file__).parent.parent / "mlflow_agent.db"
 MAX_RETRIES = 3
-AGENT_TIMEOUT = 120
+AGENT_TIMEOUT = 180
 
 
 async def _run_attempt(agent: Agent, prompt: str) -> tuple[SearchPath, float]:

@@ -1,10 +1,5 @@
-from pydantic import BaseModel, StringConstraints
-from typing import Any, Dict, Optional, Annotated
-
-PointKey = Annotated[
-    str,
-    StringConstraints(pattern=r"^point\d+$")
-]
+from pydantic import BaseModel
+from typing import Any, Dict, Optional
 
 class Task1_user(BaseModel):
     x: int
@@ -27,15 +22,25 @@ class Task2_2(BaseModel):
 class Task3(BaseModel):
     witz: str
 
+class Joke(BaseModel):
+    witz: str
+
 class Task4(BaseModel):
     litter_points: Dict[PointKey, Point]
 
 class Task5(BaseModel):
     point_reached: bool
 
+class Task5_Arrival(BaseModel):
+    point_key: PointKey
+    is_last: bool
+
 class Task6(BaseModel):
     finished_emote: bool
-    
+
+class Task6_EmoteDone(BaseModel):
+    point_key: PointKey
+
 
 class SearchPath(BaseModel):
     points: list[Point]

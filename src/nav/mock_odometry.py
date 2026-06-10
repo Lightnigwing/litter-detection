@@ -2,7 +2,7 @@
 
 Subscribes to MovementCommand on the motion topic, integrates a simple
 forward-kinematics pose estimate, and publishes OdometryState back to
-the system_state.odometry topic. The NavManager consumes these poses
+the localization.pose topic. The NavManager consumes these poses
 and progresses through its state machine as if a real robot was driving.
 
 Replace with the real robodog bridge once hardware is connected.
@@ -42,7 +42,7 @@ class MockOdometry:
         self.last_update: float = time.monotonic()
 
         self.pub = self.session.declare_publisher(
-            key_expr=self.settings.topics.system_state.odometry,
+            key_expr=self.settings.topics.localization.pose,
             encoding=zenoh.Encoding.APPLICATION_JSON,
         )
         self.session.declare_subscriber(

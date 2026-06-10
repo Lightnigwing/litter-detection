@@ -76,7 +76,7 @@ def main():
     nav_proc = subprocess.Popen(
         [sys.executable, "-m", "nav.nav_manager"], cwd=src_dir
     )
-    robot_mode = os.environ.get("LITTER_ROBOT_MODE", "mock")
+    robot_mode = os.environ.get("LITTER_ROBOT_MODE", "real")
     if robot_mode == "real":
         # Echter Go2: robodog-Bridge übernimmt Odometry über WebRTC
         pose_proc = subprocess.Popen(
