@@ -204,10 +204,24 @@ def _project_on_segment(p: Pose2D, a: Pose2D, b: Pose2D) -> tuple[float, float, 
 
 
 class PathExecutor:
-    """Pure-Pursuit path follower with adaptive lookahead."""
+    """Straight-line path executor with turn-walk-align phases.
 
-    def __init__(self, config: NavConfig | None = None) -> None:
-        self._config = config or NavConfig()
+    For each waypoint:
+    1. TURNING — rotate in place until facing the waypoint
+    2. WALKING — drive forward with small strafing corrections
+    3. ALIGNING — at the target, rotate in place to match target heading
+    """
+
+    ANGULAR_KP = 1.5
+    MAX_ANGULAR_VELOCITY = 0.8
+    STATUS_INTERVAL = 0.5
+    BLOCKED_TIMEOUT = 5.0
+    BLOCKED_DISTANCE_THRESHOLD = 0.05
+    BLOCKED_ANGLE_THRESHOLD = math.radians(5)
+    ORIENTATION_KP = 1.2
+    HEADING_THRESHOLD = math.radians(15)
+
+    def __init__(self) -> None:
         self._path: PlannedPath | None = None
         self._segment_index: int = 0
         self._start_pose: Pose2D | None = None  # snapshot of pose at set_path's first tick

@@ -84,14 +84,14 @@ class NavigationSegment(BaseModel):
     """A single segment to traverse.
     """
 
-    target: Pose2D  # Where this segment ends
-    max_speed: float | None = None  # m/s, None = use default
-    corridor: Corridor | None = None  # Optional lateral bounds
-    allowed_deviation: float = 0.15  # meters — how close counts as "arrived"
-    allowed_orientation_deviation: float = 0.1  # radians
-    must_stop: bool = True  # Must the robot fully stop at target?
-    orientation_at_target: float | None = None  # Required heading at target, radians
-    rotation_allowed_on_segment: bool = True  # Can the robot rotate while traversing?
+    target: Pose2D
+    max_speed: float | None = None
+    corridor: Corridor | None = None
+    allowed_deviation: float = 0.15
+    allowed_orientation_deviation: float = 0.1
+    must_stop: bool = True
+    orientation_at_target: float | None = None
+    rotation_allowed_on_segment: bool = True
 
 
 class NavigationRequest(BaseModel):
@@ -114,13 +114,11 @@ class PathWaypoint(BaseModel):
     """
 
     pose: Pose2D
-    speed: float  # Target speed at this waypoint, m/s
-    is_segment_boundary: bool = (
-        False  # True = corresponds to an original segment target
-    )
-    must_stop: bool = False  # True = robot must reach zero velocity at this point
-    allowed_deviation: float = 0.15  # meters
-    allowed_orientation_deviation: float = 0.1  # radians
+    speed: float
+    is_segment_boundary: bool = False
+    must_stop: bool = False
+    allowed_deviation: float = 0.15
+    allowed_orientation_deviation: float = 0.1
 
 
 class PlannedPath(BaseModel):
