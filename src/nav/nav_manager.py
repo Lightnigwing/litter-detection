@@ -64,7 +64,7 @@ class NavManager:
         # Pose from the localization stack (same topic the VDA5050 bridge
         # subscribes to via LivePositionProvider — single source of truth).
         self.z_session.declare_subscriber(
-            key_expr=self.settings.topics.localization.pose,
+            key_expr=self.settings.topics.system_state.odometry,
             handler=self._on_pose,
         )
 
