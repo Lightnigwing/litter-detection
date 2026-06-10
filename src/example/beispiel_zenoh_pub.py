@@ -2,7 +2,7 @@ import json
 
 import zenoh
 import time
-from topics_json.topics import TOPICS
+from topics_pydantic_models.topics import TOPICS
 from config import Settings
 
 # Zenoh-Session starten

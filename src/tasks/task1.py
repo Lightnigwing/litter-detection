@@ -1,7 +1,39 @@
+import asyncio
 import json
+import time
+from pathlib import Path
 from config import Settings
 from topics_json.Task_json import Point, Task1_points
 import zenoh
+from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
+from topics_json.Task_json import SearchPath
+import mlflow
+
+
+def _make_positions(limit: float) -> list[float]:
+    positions: list[float] = []
+    v = 0.0
+    while v < limit:
+        positions.append(round(v, 1))
+        v += 1.0
+    if not positions or positions[-1] < limit:
+        positions.append(round(limit, 1))
+    return positions
+
+
+
+_MLFLOW_AGENT_DB = Path(__file__).parent.parent / "mlflow_agent.db"
+MAX_RETRIES = 3
+AGENT_TIMEOUT = 180
+
+
+async def _run_attempt(agent: Agent, prompt: str) -> tuple[SearchPath, float]:
+    time_start = time.time()
+    result_agent = await asyncio.wait_for(agent.run(prompt), timeout=AGENT_TIMEOUT)
+    return result_agent.output, time.time() - time_start
+
 
 from pydantic import BaseModel
 from pydantic_ai import Agent
@@ -23,83 +55,177 @@ class SearchPath(BaseModel):
 
 
 def run_task():
-    # Initialisiert Zenoh-Session
     settings = Settings()
     conf = zenoh.Config()
     conf.insert_json5("connect/endpoints", f'["{settings.zenoh_router}"]')
     session = zenoh.open(conf)
 
-    # Ausnahme muss als einziges auf start hören, da es keine Task0 gibt
-    # Holt sich die Daten aus der vorherigen Task, um die Logik auszuführen (mit Zenoh Storage)
-    replies = session.get("pipeline/task1/start")
+    try:
+        mlflow.set_tracking_uri(f"sqlite:///{_MLFLOW_AGENT_DB}")
+        mlflow.set_experiment("task1-agent")
+    except Exception:
+        pass
 
+    replies = session.get("pipeline/task1/start")
+    data_reply = None
     for reply in replies:
         data_reply = json.loads(reply.ok.payload.to_bytes())
 
-    result = None
+    if data_reply is None:
+        session.close()
+        raise RuntimeError("task1: kein task1/start Reply erhalten")
 
-    #NOTE: Enthält x und y Wert des User in einem dict, z.B. {"x": 1.0, "y": 2.0}
     data = json.loads(data_reply["data"])
-    
-    # Main loop der Task-Logik
-    while result is None:
+
+    """""
+    data = {"x": 8,"y": 18}
+    """""
+    print(f"[TASK1] Received data: {data}")
+
+    provider = OpenAIProvider(base_url="http://localhost:11434/v1", api_key="ollama")
+    model = OpenAIChatModel("qwen2.5:7b", provider=provider)
+    agent = Agent(
+        model,
+        output_type=SearchPath,
+        output_retries=3,
+        system_prompt=(
+            "# ROLLE\n"
+            "Du bist ein deterministischer Pfadplaner fuer einen autonomen "
+            "Suchroboter. Du berechnest einen vollstaendigen Abdeckungspfad fuer "
+            "eine rechteckige Flaeche und gibst ihn als geordnete Wegpunktliste aus.\n\n"
+
+            "# EINGABE\n"
+            "Du erhaeltst zwei positive Zahlen: die Breite (x) und die Hoehe (y) der "
+            "Flaeche in Metern. Die Flaeche reicht immer von (0,0) bis (Breite, Hoehe).\n\n"
+
+            "# ROBOTER\n"
+            "- Startet immer bei (0.0, 0.0).\n"
+            "- Faehrt ausschliesslich gerade, achsenparallele Strecken "
+            "(eine Bewegung aendert entweder x ODER y, niemals beides).\n"
+            "- Kamera blickt nach vorne und scannt einen 1.5 m breiten Streifen.\n"
+            "- Bahnabstand: 1.0 m (garantiert Ueberlappung, keine Luecken).\n\n"
+
+            "# ALGORITHMUS (Boustrophedon / Lawnmower)\n"
+            "## Schritt 1: Scanrichtung bestimmen\n"
+            "Vergleiche Breite und Hoehe:\n"
+            "- Breite <= Hoehe: scanne vertikal (Bahnen parallel zur y-Achse, entlang x)\n"
+            "- Breite > Hoehe:  scanne horizontal (Bahnen parallel zur x-Achse, entlang y)\n"
+            "Regel: Immer entlang der kuerzeren Dimension scannen -- das ergibt weniger Bahnen.\n\n"
+
+            "## Schritt 2: Positionen berechnen\n"
+            "Erzeuge Positionen entlang der Scanachse: 0.0, 1.0, 2.0, ... solange < Grenze.\n"
+            "Haenge den Grenzwert (Breite bzw. Hoehe) an falls noch nicht enthalten.\n"
+            "   Grenze=3: Positionen = [0.0, 1.0, 2.0, 3.0]\n"
+            "   Grenze=4: Positionen = [0.0, 1.0, 2.0, 3.0, 4.0]\n\n"
+
+            "## Schritt 3: Wegpunkte erzeugen\n"
+            "Pro Position genau 2 Punkte (Bahnanfang und Bahnende), abwechselnd Richtung:\n"
+            "Vertikal (Breite <= Hoehe): gerade Indizes (x, 0.0)->(x, Hoehe), "
+            "ungerade Indizes (x, Hoehe)->(x, 0.0).\n"
+            "Horizontal (Breite > Hoehe): gerade Indizes (0.0, y)->(Breite, y), "
+            "ungerade Indizes (Breite, y)->(0.0, y).\n\n"
+
+            "KRITISCH: Die letzte Position (= Grenzwert) ist PFLICHT und muss mit "
+            "BEIDEN Endpunkten in der Liste stehen.\n"
+            "Die Koordinate senkrecht zur Scanachse ist immer exakt 0.0 oder der "
+            "Grenzwert -- niemals ein Zwischenwert.\n\n"
+
+            "# AUSGABE\n"
+            "- Ausschliesslich gueltiges JSON passend zum Pydantic-Schema "
+            '{ "points": [ { "x": float, "y": float }, ... ] }.\n'
+            "- Keine Erklaerungen, kein Text, keine Codeblock-Markierungen.\n"
+            "- Alle Koordinaten als float mit einer Nachkommastelle.\n"
+            "- Reihenfolge der Punkte ist kritisch und muss exakt dem Fahrweg entsprechen.\n\n"
+
+            "# BEISPIEL A (Breite=3, Hoehe=5) -- Breite<=Hoehe -> vertikal -- 4 Positionen, 8 Punkte\n"
+            "{\n"
+            '  "points": [\n'
+            '    {"x": 0.0, "y": 0.0},\n'
+            '    {"x": 0.0, "y": 5.0},\n'
+            '    {"x": 1.0, "y": 5.0},\n'
+            '    {"x": 1.0, "y": 0.0},\n'
+            '    {"x": 2.0, "y": 0.0},\n'
+            '    {"x": 2.0, "y": 5.0},\n'
+            '    {"x": 3.0, "y": 5.0},\n'
+            '    {"x": 3.0, "y": 0.0}\n'
+            "  ]\n"
+            "}\n\n"
+
+            "# BEISPIEL B (Breite=5, Hoehe=3) -- Breite>Hoehe -> horizontal -- 4 Positionen, 8 Punkte\n"
+            "{\n"
+            '  "points": [\n'
+            '    {"x": 0.0, "y": 0.0},\n'
+            '    {"x": 5.0, "y": 0.0},\n'
+            '    {"x": 5.0, "y": 1.0},\n'
+            '    {"x": 0.0, "y": 1.0},\n'
+            '    {"x": 0.0, "y": 2.0},\n'
+            '    {"x": 5.0, "y": 2.0},\n'
+            '    {"x": 5.0, "y": 3.0},\n'
+            '    {"x": 0.0, "y": 3.0}\n'
+            "  ]\n"
+            "}"
+        )
+    )
+
+    field_x, field_y = data["x"], data["y"]
+    if field_x <= field_y:
+        positions = _make_positions(field_x)
+        user_prompt = (
+            f"Flaeche: Breite={field_x} Meter, Hoehe={field_y} Meter.\n"
+            f"Scanrichtung: VERTIKAL -- Bahnen laufen von y=0.0 bis y={field_y} (volle Hoehe).\n"
+            f"x-Positionen der Bahnen: {positions}\n"
+            f"Erster Punkt: (0.0, 0.0). Erwartete Punktanzahl: {2 * len(positions)}."
+        )
+    else:
+        positions = _make_positions(field_y)
+        user_prompt = (
+            f"Flaeche: Breite={field_x} Meter, Hoehe={field_y} Meter.\n"
+            f"Scanrichtung: HORIZONTAL -- Bahnen laufen von x=0.0 bis x={field_x} (volle Breite).\n"
+            f"y-Positionen der Bahnen: {positions}\n"
+            f"Erster Punkt: (0.0, 0.0). Erwartete Punktanzahl: {2 * len(positions)}."
+        )
+
+    result = None
+    status = "failed"
+    elapsed = 0.0
+    attempts = 0
+
+    with mlflow.start_run(run_name="task1"):
         try:
-            """
-            Hier den Code einfügen den ihr schreibt der das Result produzier.
-            Wichtig: return result enthält ein Dict, mit allen Daten aufeinmal
+            mlflow.log_params({"field_x": data["x"], "field_y": data["y"], "model": "qwen2.5:7b"})
+        except Exception:
+            pass
 
-            Task1: x und y als input, Weg planen, Punkte als Output
-            
-            result = Task1_points(points={"point1": Point(x=1.0, y=2.0), "point2": Point(x=3.0, y=4.0)})
-            """
-            print(f"[TASK1] Received data: {data}")
-            
-            # Pydantic-AI Agent für intelligente Pfad-Planung
-            provider = OpenAIProvider(
-                base_url="http://localhost:11434/v1",
-                api_key="ollama",
-            )
-            model = OpenAIChatModel("gemma4:e4b", provider=provider)
-            
-            path_planner_agent = Agent(
-                model,
-                result_type=SearchPath,
-                system_prompt=(
-                    "Du bist ein intelligenter Pfad-Planer fuer einen Such-Roboter. "
-                    "Der Roboter startet bei (0, 0) in einem Rechteckfeld mit Breite und Hoehe, "
-                    "die du aus den User-Daten bekommst (x=Breite, y=Hoehe). "
-                    "Die Kamera deckt 1 Meter Breite ab, daher darf der Abstand zwischen Bahnen max. 1 Meter sein. "
-                    "Plane eine Boustrophedon-Route (Zick-Zack), die >95% der Flaeche abdeckt. "
-                    "Der Hund laeuft immer nur gerade Linien zwischen den Punkten. "
-                    "Gib nur die Punkte aus, an denen der Hund drehen muss (also Bahn-Endpunkte). "
-                    "Die Punkte muessen in Fahrreihenfolge sortiert sein. "
-                    "Rueckgabe MUSS ein JSON sein mit keys point1, point2, ... und x/y je Punkt. "
-                    "Keine anderen Keys verwenden."
-                ),
-            )
-            
-            # Agent ausführen
-            user_prompt = (
-                f"Startpunkt ist (0, 0). "
-                f"Feldgroesse: {data['x']}x{data['y']} Meter (Breite x Hoehe). "
-                f"Bahnabstand <= 1 Meter. "
-                f"Bitte nur Wendepunkte ausgeben (jede Stelle, an der der Hund drehen muss)."
-            )
-            
-            result_agent = path_planner_agent.run_sync(user_prompt)
-            search_path: SearchPath = result_agent.data
-            
-            print(f"[TASK1] Agent geplant: {search_path.description}")
-            
-            # Konvertiere SearchPath in Task1_points Format
-            points_dict = {}
-            for i, point in enumerate(search_path.points, 1):
-                points_dict[f"point{i}"] = Point(x=point.x, y=point.y)
-            
-            result = Task1_points(points=points_dict)
-        
-            return result
-        finally:
-            session.close()
+        for attempt in range(MAX_RETRIES):
+            attempts = attempt + 1
+            try:
+                search_path, elapsed = asyncio.run(_run_attempt(agent, user_prompt))
+                result = Task1_points(
+                    points={f"point{i}": p for i, p in enumerate(search_path.points, 1)}
+                )
+                status = "success"
+                print(f"[TASK1] Agent fertig in {elapsed:.2f}s, {len(search_path.points)} Punkte, {search_path.points}")
+                break
+            except asyncio.TimeoutError:
+                status = "timeout"
+                print(f"[TASK1] Timeout nach {AGENT_TIMEOUT}s (Versuch {attempts}/{MAX_RETRIES})")
+            except Exception as e:
+                status = "error"
+                print(f"[TASK1] Fehler (Versuch {attempts}/{MAX_RETRIES}): {e}")
 
+        try:
+            mlflow.set_tag("status", status)
+            mlflow.log_metrics({"elapsed_time_s": round(elapsed, 3), "attempts_needed": attempts})
+            if result is not None:
+                mlflow.log_metric("point_count", len(result.points))
+                mlflow.log_text(result.model_dump_json(indent=2), "result_points.json")
+        except Exception:
+            pass
 
+    session.close()
+    return result
+
+"""""
+if __name__ == "__main__":
+    run_task()
+"""""
