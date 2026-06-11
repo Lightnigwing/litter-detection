@@ -15,3 +15,4 @@ ResNet34_chatgpt_CombinedLoss_50.pth
 src/autoresearcher_litter_detection.egg-info
 vendor/
 .claude/
+logs/*

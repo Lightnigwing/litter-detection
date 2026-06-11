@@ -42,10 +42,11 @@ def run_task():
 
         input_data = Task1_points.model_validate_json(data_reply["data"])
         ordered = _sorted_points(input_data.points)
-        if not ordered:
+        ordered_r0 = [(k, v) for k, v in ordered if k != "point0"]
+        if not ordered_r0:
             raise ValueError("task2_1: Task1 lieferte keine Punkte")
 
-        print(f"[TASK2_1] {len(ordered)} Punkte zu abfahren: {[name for name, _ in ordered]}")
+        print(f"[TASK2_1] {len(ordered_r0)} Punkte zu abfahren: {[name for name, _ in ordered_r0]}")
 
         # NavStatus-Subscriber + Wait-Event
         arrived = threading.Event()
@@ -70,7 +71,7 @@ def run_task():
 
         # Sequenziell jeden Punkt anfahren
         last_point: Point | None = None
-        for name, point in ordered:
+        for name, point in ordered_r0:
             req_id = f"task2_1-{name}"
             state_box["req_id"] = req_id
             state_box["state"] = None

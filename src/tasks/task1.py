@@ -79,7 +79,7 @@ def run_task():
             "Flaeche in Metern. Die Flaeche reicht immer von (0,0) bis (Breite, Hoehe).\n\n"
 
             "# ROBOTER\n"
-            "- Startet immer bei (0.0, 0.0).\n"
+            "- .\n"
             "- Faehrt ausschliesslich gerade, achsenparallele Strecken "
             "(eine Bewegung aendert entweder x ODER y, niemals beides).\n"
             "- Kamera blickt nach vorne und scannt einen 1.5 m breiten Streifen.\n"
@@ -181,7 +181,7 @@ def run_task():
             try:
                 search_path, elapsed = asyncio.run(_run_attempt(agent, user_prompt))
                 result = Task1_points(
-                    points={f"point{i}": p for i, p in enumerate(search_path.points, 1)}
+                    points={f"point{i}": p for i, p in enumerate(search_path.points, 0)}
                 )
                 status = "success"
                 print(f"[TASK1] Agent fertig in {elapsed:.2f}s, {len(search_path.points)} Punkte, {search_path.points}")
