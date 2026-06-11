@@ -13,7 +13,8 @@ Format:  COCO_format.zip inside the HF snapshot contains:
 
 Output layout:
     data/
-        images/       *.jpg  (resized to IMAGE_SIZE x IMAGE_SIZE)
+        images/       *.jpg  (shorter side = IMAGE_SIZE, aspect ratio preserved,
+                              long side capped at MAX_ASPECT * IMAGE_SIZE)
         masks/        *.png  (binary uint8: 0=background, 255=litter)
         train.txt     list of stem names for training split
         val.txt       list of stem names for validation split
@@ -70,27 +71,34 @@ def polygon_to_mask(segmentation: list, width: int, height: int) -> np.ndarray:
         draw.polygon(xy, outline=1, fill=1)
     return np.array(mask, dtype=np.uint8)
 
-# NOTE: Resize mit Padding (kein Verzerren)
-def resize_with_padding(img, size, is_mask=False):
+# NOTE: Resize ohne Padding (ersetzt resize_with_padding): kürzere Seite wird auf
+# `size` skaliert, Seitenverhältnis bleibt erhalten → keine schwarzen Ränder und
+# keine Verzerrung. Die Bilder sind dadurch rechteckig, was okay ist, weil
+# train.py per RandomResizedCrop/CenterCrop ohnehin auf Quadrate croppt.
+# Extreme Panorama-Formate (TACO enthält bis 6000x474) werden entlang der langen
+# Achse per Center-Crop auf MAX_ASPECT * size begrenzt, sonst explodieren
+# Dateigröße und Ladezeit bei einzelnen Ausreißern.
+MAX_ASPECT = 1.5
+
+def resize_no_padding(img, size, is_mask=False):
     w, h = img.size
 
-    scale = min(size / w, size / h)
-    new_w, new_h = int(w * scale), int(h * scale)
+    scale = size / min(w, h)
+    new_w, new_h = round(w * scale), round(h * scale)
 
     interp = Image.NEAREST if is_mask else Image.BILINEAR
     img_resized = img.resize((new_w, new_h), interp)
 
-    mode = "L" if is_mask else "RGB"
-    fill = 0 if is_mask else (0, 0, 0)
+    max_long = int(size * MAX_ASPECT)
+    if max(new_w, new_h) > max_long:
+        if new_w > new_h:
+            left = (new_w - max_long) // 2
+            img_resized = img_resized.crop((left, 0, left + max_long, new_h))
+        else:
+            top = (new_h - max_long) // 2
+            img_resized = img_resized.crop((0, top, new_w, top + max_long))
 
-    new_img = Image.new(mode, (size, size), fill)
-
-    paste_x = (size - new_w) // 2
-    paste_y = (size - new_h) // 2
-
-    new_img.paste(img_resized, (paste_x, paste_y))
-
-    return new_img 
+    return img_resized
 
 def main():
     random.seed(RANDOM_SEED)
@@ -193,7 +201,7 @@ def main():
                     continue
 
                 orig_w, orig_h = img.size
-                img_resized = resize_with_padding(img, IMAGE_SIZE) #NOTE: Resize mit Padding (kein Verzerren)
+                img_resized = resize_no_padding(img, IMAGE_SIZE) #NOTE: Resize ohne Padding/Verzerren (keine schwarzen Ränder)
 
                 # ── Build binary mask from all annotations ─────────────────
                 combined_mask = np.zeros((orig_h, orig_w), dtype=np.uint8)
@@ -207,7 +215,7 @@ def main():
                     combined_mask = np.maximum(combined_mask, m)
 
                 mask_pil     = Image.fromarray(combined_mask * 255, mode="L")
-                mask_resized = resize_with_padding(mask_pil, IMAGE_SIZE, is_mask=True) # NOTE: Resize mit Padding (kein Verzerren)
+                mask_resized = resize_no_padding(mask_pil, IMAGE_SIZE, is_mask=True) # NOTE: identische Transformation wie Bild (NEAREST, gleicher Crop)
 
                 stem = f"{img_id:06d}"
                 img_resized.save(IMAGES_DIR / f"{stem}.jpg", quality=92)
