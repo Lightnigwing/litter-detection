@@ -1,6 +1,9 @@
 tasks:
+  - id: task0
+  
   - id: task1
-
+    depends_on: [task0]
+    
   #- id: task2_1
   #  depends_on: [task1]
     
