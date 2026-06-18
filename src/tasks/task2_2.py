@@ -66,19 +66,6 @@ def _crop_to_object(
     return crop
 
 
-def _mark_rejected(overlay: np.ndarray) -> np.ndarray:
-    """Zeichnet roten Rahmen + Label 'NICHT VALIDIERT' auf eine Kopie des Crops."""
-    img = overlay.copy()
-    h, w = img.shape[:2]
-    red = (0, 0, 255)  # BGR
-    cv2.rectangle(img, (0, 0), (w - 1, h - 1), red, 3)
-    cv2.putText(
-        img, "NICHT VALIDIERT", (6, 22),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.6, red, 2, cv2.LINE_AA,
-    )
-    return img
-
-
 async def _validate_batch(batch: list[LitterFrame]) -> list[tuple[LitterFrame, bool]]:
     images = []
     for lf in batch:
@@ -136,9 +123,7 @@ def run_task() -> Task2_2:
         logger.disable("task2_2")
     backend = build_backend(settings)
 
-    conf = zenoh.Config()
-    conf.insert_json5("connect/endpoints", f'["{settings.zenoh_router}"]')
-    session = zenoh.open(conf)
+    session = zenoh.open(settings.zenoh_config())
 
     frame_queue: queue.Queue[LitterFrame | None] = queue.Queue()
     validated_litter: list[LitterFrame] = []
@@ -300,10 +285,15 @@ def run_task() -> Task2_2:
                     validated_litter.extend(validated)
                     total = len(validated_litter)
                 for lf, ok_validated in results:
-                    overlay = lf.overlay if ok_validated else _mark_rejected(lf.overlay)
-                    ok, buf = cv2.imencode(".jpg", overlay, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
+                    # Sauberes Overlay senden; Rahmen/Label zeichnet der Viewer
+                    # anhand des Attachments (litter / no_litter).
+                    ok, buf = cv2.imencode(".jpg", lf.overlay, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
                     if ok:
-                        validated_pub.put(buf.tobytes(), encoding=zenoh.Encoding.IMAGE_JPEG)
+                        validated_pub.put(
+                            buf.tobytes(),
+                            encoding=zenoh.Encoding.IMAGE_JPEG,
+                            attachment=b"litter" if ok_validated else b"no_litter",
+                        )
                 logger.info(
                     "Batch abgeschlossen | {:.0f}ms | bestätigt={}/{} | gesamt_litter={}",
                     batch_ms, len(validated), len(batch), total,

@@ -42,9 +42,7 @@ def main() -> None:
         FPS,
     )
 
-    conf = zenoh.Config()
-    conf.insert_json5("connect/endpoints", f'["{settings.zenoh_router}"]')
-    session = zenoh.open(conf)
+    session = zenoh.open(settings.zenoh_config())
     logger.info("Zenoh session open — publishing to '%s'", settings.topic_frame)
 
     interval = 1.0 / FPS

@@ -13,9 +13,7 @@ import time
 from config import Settings
 
 settings = Settings()
-conf = zenoh.Config()
-conf.insert_json5("connect/endpoints", f'["{settings.zenoh_router}"]')
-session = zenoh.open(conf)
+session = zenoh.open(settings.zenoh_config())
 
 
 # Load pipeline configuration

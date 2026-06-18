@@ -54,9 +54,7 @@ def main() -> None:
     backend = build_backend(settings)
     logger.info("Backend ready.")
 
-    conf = zenoh.Config()
-    conf.insert_json5("connect/endpoints", f'["{settings.zenoh_router}"]')
-    session = zenoh.open(conf)
+    session = zenoh.open(settings.zenoh_config())
     logger.info(
         "Zenoh session open — subscribing to '%s', publishing to '%s' + '%s'",
         settings.topic_frame,

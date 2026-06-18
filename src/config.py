@@ -2,11 +2,13 @@
 
 from dataclasses import dataclass
 
+import zenoh
+
 
 @dataclass
 class Settings:
     # Zenoh localhost
-    zenoh_router: str = "tcp/localhost:7447"
+    zenoh_router: str = "tcp/192.168.4.249:7447"
     zenoh_shared_memory: bool = False
     topic_frame: str = "litter/frame"
     topic_detections: str = "litter/detections"
@@ -47,3 +49,17 @@ class Settings:
 
     # Logging
     task2_2_logging: bool = True
+
+    def zenoh_config(self) -> zenoh.Config:
+        """Baut die Zenoh-Client-Config.
+
+        Variante A: keine Auto-Discovery (Multicast/Gossip aus), damit sich der
+        Client nur mit dem konfigurierten Router verbindet und keine fremden
+        Router/Peers im selben LAN aufgreift.
+        """
+        conf = zenoh.Config()
+        conf.insert_json5("mode", '"client"')
+        conf.insert_json5("connect/endpoints", f'["{self.zenoh_router}"]')
+        conf.insert_json5("scouting/multicast/enabled", "false")
+        conf.insert_json5("scouting/gossip/enabled", "false")
+        return conf

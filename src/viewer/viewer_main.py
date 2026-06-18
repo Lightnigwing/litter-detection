@@ -48,15 +48,30 @@ CAPACITY = {"litter/cropped": 4, "litter/validated": 2}
 SUBGRID = {"litter/cropped": (2, 2), "litter/validated": (1, 2)}
 
 
+def _draw_validation(img: Image.Image, is_litter: bool) -> Image.Image:
+    """Zeichnet grünen Rahmen + 'Litter' bzw. roten Rahmen + 'No Litter'."""
+    img = img.convert("RGB")
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+    color = (0, 200, 0) if is_litter else (220, 0, 0)
+    text = "Litter" if is_litter else "No Litter"
+    border = max(3, h // 60)
+    draw.rectangle([(0, 0), (w - 1, h - 1)], outline=color, width=border)
+    try:
+        font = ImageFont.truetype("arial.ttf", max(14, h // 12))
+    except OSError:
+        font = ImageFont.load_default()
+    draw.text((border + 3, border + 2), text, fill=color, font=font)
+    return img
+
+
 def main() -> None:
     latest: dict[str, deque] = {
         t: deque(maxlen=CAPACITY.get(t, 1)) for t, _ in TOPICS
     }
     lock = threading.Lock()
 
-    conf = zenoh.Config()
-    conf.insert_json5("connect/endpoints", f'["{settings.zenoh_router}"]')
-    session = zenoh.open(conf)
+    session = zenoh.open(settings.zenoh_config())
 
     def _render_detections_json(payload: bytes) -> Image.Image:
         try:
@@ -98,6 +113,9 @@ def main() -> None:
                 except Exception as e:
                     logger.warning("[%s] failed to decode image: %s", topic, e)
                     return
+                if topic == "litter/validated":
+                    att = bytes(sample.attachment) if sample.attachment is not None else b""
+                    img = _draw_validation(img, att == b"litter")
             with lock:
                 latest[topic].append(img)
         return on_sample

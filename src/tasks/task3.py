@@ -24,9 +24,7 @@ async def _run_attempt(agent: Agent, prompt: str) -> tuple[Joke, float]:
 
 def run_task():
     settings = Settings()
-    conf = zenoh.Config()
-    conf.insert_json5("connect/endpoints", f'["{settings.zenoh_router}"]')
-    session = zenoh.open(conf)
+    session = zenoh.open(settings.zenoh_config())
 
     try:
         mlflow.set_tracking_uri(f"sqlite:///{_MLFLOW_AGENT_DB}")

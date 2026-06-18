@@ -28,9 +28,7 @@ def _sorted_points(points: dict[str, Point]) -> list[tuple[str, Point]]:
 
 def run_task():
     settings = Settings()
-    conf = zenoh.Config()
-    conf.insert_json5("connect/endpoints", f'["{settings.zenoh_router}"]')
-    session = zenoh.open(conf)
+    session = zenoh.open(settings.zenoh_config())
 
     try:
         # Holt sich die Punkte aus task1

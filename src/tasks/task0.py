@@ -13,9 +13,7 @@ import mlflow
 
 def run_task():
     settings = Settings()
-    conf = zenoh.Config()
-    conf.insert_json5("connect/endpoints", f'["{settings.zenoh_router}"]')
-    session = zenoh.open(conf)
+    session = zenoh.open(settings.zenoh_config())
     
     user_input_x, user_input_y = None, None
 

@@ -117,6 +117,8 @@ def _build_zenoh_config(zenoh_settings: Zenoh) -> zenoh.Config:
     cfg = zenoh.Config()
     cfg.insert_json5("mode", '"client"')
     cfg.insert_json5("connect/endpoints", f'["{endpoint}"]')
+    cfg.insert_json5("scouting/multicast/enabled", "false")
+    cfg.insert_json5("scouting/gossip/enabled", "false")
     cfg.insert_json5("transport/shared_memory/enabled", str(shm).lower())
     if shm:
         cfg.insert_json5(
