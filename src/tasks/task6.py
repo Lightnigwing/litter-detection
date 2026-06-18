@@ -27,6 +27,7 @@ def run_task():
             except Exception as e:
                 print(f"[TASK6] Failed to parse arrival: {e}")
                 return
+            time.sleep(2.0)
             arrivals.put(arrival)
 
         session.declare_subscriber(TOPIC_ARRIVED_AT_POINT, on_arrival)
