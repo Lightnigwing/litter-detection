@@ -166,7 +166,7 @@ def run_task() -> Task2_2:
                 pass
             time.sleep(1.0)
 
-    #threading.Thread(target=_wait_for_task2_1, daemon=True).start()
+    threading.Thread(target=_wait_for_task2_1, daemon=True).start()
 
     def _on_position(sample: zenoh.Sample) -> None:
         try:

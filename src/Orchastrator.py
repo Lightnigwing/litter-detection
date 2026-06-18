@@ -4,7 +4,6 @@ import signal
 import subprocess
 import sys
 from pathlib import Path
-from topics_pydantic_models.pydantic_models import Task1_user
 import zenoh
 import yaml
 import json

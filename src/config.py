@@ -17,7 +17,7 @@ class Settings:
     topic_camera_intrinsics: str = "litter/frame_intrinsics"
 
     # Robodog hardware
-    go2_local_address: str = "192.168.4.202"
+    go2_local_address: str = "192.168.4.203"
 
 
     # Model

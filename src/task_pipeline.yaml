@@ -13,11 +13,11 @@ tasks:
   - id: task3
     depends_on: [task2_1, task2_2]
 
-  #- id: task4
-  #  depends_on: [task3]
+  - id: task4
+    depends_on: [task3]
 
-  #- id: task5
-  #  depends_on: [task4]
+  - id: task5
+    depends_on: [task4]
 
-  #- id: task6
-  #  depends_on: [task4]
+  - id: task6
+    depends_on: [task4]
