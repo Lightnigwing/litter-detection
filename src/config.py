@@ -15,7 +15,7 @@ class Settings:
     topic_camera_intrinsics: str = "litter/frame_intrinsics"
 
     # Robodog hardware
-    go2_local_address: str = "192.168.4.202"
+    go2_local_address: str = "192.168.4.203"
 
 
     # Model
@@ -46,4 +46,4 @@ class Settings:
     otel_service_name: str = "yolo-detector"
 
     # Logging
-    task2_2_logging: bool = True
+    task2_2_logging: bool = False

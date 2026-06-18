@@ -1,4 +1,5 @@
 import json
+import threading
 import time
 from config import Settings
 from topics_pydantic_models.pydantic_models import Point, Task4, OrderedPoints
@@ -8,6 +9,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from interfaces.topics import TOPICS
+
 
 def run_task():
 
@@ -30,28 +32,26 @@ def run_task():
 
     data = json.loads(data_reply["data"])
     litter_points = data.get("litter_points", {})
+    # Aktuelle Position genau einmal aus dem ersten gültigen Odometry-Sample setzen.
+    # Odometry wird kontinuierlich publiziert -> Subscriber + Event statt session.get.
+    pose_holder: dict = {"pose": None}
+    pose_event = threading.Event()
 
-    # Lese aktuelle Position mit Wiederholungen
-    current_pose = None
-    max_attempts = 3
-    for attempt in range(max_attempts):
+    def od_save(sample: zenoh.Sample) -> None:
         try:
-            odom_replies = session.get(TOPICS.system_state.odometry)
-            for r in odom_replies:
-                try:
-                    od = json.loads(r.ok.payload.to_bytes())
-                    if "x" in od and "y" in od:
-                        current_pose = {"x": float(od["x"]), "y": float(od["y"])}
-                        break
-                except Exception:
-                    continue
-            if current_pose is not None:
-                break
+            od = json.loads(sample.payload.to_bytes())
+            if "x" in od and "y" in od:
+                pose_holder["pose"] = {"x": float(od["x"]), "y": float(od["y"])}
+                pose_event.set()
         except Exception:
             pass
 
-        if attempt < max_attempts - 1:
-            time.sleep(0.5)
+    sub_od = session.declare_subscriber(TOPICS.system_state.odometry, od_save)
+    pose_event.wait(timeout=5.0)  # warte auf erstes Odometry-Sample
+    sub_od.undeclare()
+    current_pose = pose_holder["pose"]
+    if current_pose is not None:
+        print(f"[TASK4] Current pose: {current_pose}")
 
     if current_pose is None:
         print("[TASK4] ERROR: Konnte aktuelle Position vom Odometry-Topic nicht lesen!")
@@ -67,9 +67,9 @@ def run_task():
         "point5": {"x": 2.0, "y": 4.0},
     }
     current_pose = {"x": 7.0, "y": 8.0}
+    """""
 
     result = None
-    """""
     # Main loop der Task-Logik
     while result is None:
         try:
