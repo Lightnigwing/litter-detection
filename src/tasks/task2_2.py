@@ -137,6 +137,17 @@ def run_task() -> Task2_2:
     position_lock = threading.Lock()
     run_start = time.monotonic()
 
+    current_run_id = ""
+    try:
+        for reply in session.get("pipeline/task2_2/start"):
+            if reply.ok is not None:
+                msg = json.loads(bytes(reply.ok.payload))
+                current_run_id = msg.get("run_id", "")
+                break
+    except Exception:
+        pass
+    logger.info("task2_2 run_id={}", current_run_id)
+
     # Latest-only slot: callback writes, inference worker reads and clears
     latest_lock = threading.Lock()
     latest_frame: dict = {"data": None}
@@ -145,14 +156,20 @@ def run_task() -> Task2_2:
     empty_mask = np.zeros((settings.infer_size, settings.infer_size), dtype=bool)
 
     def _wait_for_task2_1() -> None:
-        time.sleep(600.0)
-        logger.info(
-            "60 Sekunden abgelaufen — Frames-Sammlung beendet | queue_size={}",
-            frame_queue.qsize(),
-        )
-        task2_1_done.set()
+        while True:
+            try:
+                for reply in session.get("pipeline/task2_1/done"):
+                    if reply.ok is not None:
+                        msg = json.loads(bytes(reply.ok.payload))
+                        if msg.get("run_id") == current_run_id:
+                            logger.info("task2_1 done — Frames-Sammlung beendet")
+                            task2_1_done.set()
+                            return
+            except Exception:
+                pass
+            time.sleep(1.0)
 
-    threading.Thread(target=_wait_for_task2_1, daemon=True).start()
+    #threading.Thread(target=_wait_for_task2_1, daemon=True).start()
 
     def _on_position(sample: zenoh.Sample) -> None:
         try:

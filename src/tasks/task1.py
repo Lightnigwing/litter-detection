@@ -46,7 +46,7 @@ def run_task():
     except Exception:
         pass
 
-    replies = session.get("pipeline/task1/start")
+    replies = session.get("pipeline/task0/done")
     data_reply = None
     for reply in replies:
         data_reply = json.loads(reply.ok.payload.to_bytes())
