@@ -46,6 +46,9 @@ class Task6(BaseModel):
 class Task6_EmoteDone(BaseModel):
     point_key: PointKey
 
-
 class SearchPath(BaseModel):
     points: list[Point]
+
+class OrderedPoints(BaseModel):
+    """Die optimierte Reihenfolge der Müllpunkte."""
+    points: dict[str, Point]

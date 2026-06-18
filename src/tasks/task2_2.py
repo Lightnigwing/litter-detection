@@ -66,7 +66,20 @@ def _crop_to_object(
     return crop
 
 
-async def _validate_batch(batch: list[LitterFrame]) -> list[LitterFrame]:
+def _mark_rejected(overlay: np.ndarray) -> np.ndarray:
+    """Zeichnet roten Rahmen + Label 'NICHT VALIDIERT' auf eine Kopie des Crops."""
+    img = overlay.copy()
+    h, w = img.shape[:2]
+    red = (0, 0, 255)  # BGR
+    cv2.rectangle(img, (0, 0), (w - 1, h - 1), red, 3)
+    cv2.putText(
+        img, "NICHT VALIDIERT", (6, 22),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.6, red, 2, cv2.LINE_AA,
+    )
+    return img
+
+
+async def _validate_batch(batch: list[LitterFrame]) -> list[tuple[LitterFrame, bool]]:
     images = []
     for lf in batch:
         ok, buf = cv2.imencode(".jpg", lf.overlay, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
@@ -106,16 +119,15 @@ async def _validate_batch(batch: list[LitterFrame]) -> list[LitterFrame]:
         llm_ms = (time.monotonic() - t0) * 1000
         raw = resp.json()["message"]["content"]
         data = ValidationResult.model_validate_json(raw)
-        validated = [
-            batch[item.frame_index]
-            for item in data.results
-            if item.litter_detected and item.frame_index < n
-        ]
-        logger.info("LLM fertig | {:.0f}ms | bestätigt={}/{}", llm_ms, len(validated), n)
-        return validated
+        status = [False] * n
+        for item in data.results:
+            if item.frame_index < n and item.litter_detected:
+                status[item.frame_index] = True
+        logger.info("LLM fertig | {:.0f}ms | bestätigt={}/{}", llm_ms, sum(status), n)
+        return list(zip(batch, status))
     except Exception:
         logger.exception("LLM Fehler")
-        return []
+        return [(lf, False) for lf in batch]
 
 
 def run_task() -> Task2_2:
@@ -281,13 +293,15 @@ def run_task() -> Task2_2:
             if batch:
                 logger.info("Batch gestartet | size={} | queue_remaining={}", len(batch), frame_queue.qsize())
                 t0 = time.monotonic()
-                validated = asyncio.run(_validate_batch(batch))
+                results = asyncio.run(_validate_batch(batch))
                 batch_ms = (time.monotonic() - t0) * 1000
+                validated = [lf for lf, ok in results if ok]
                 with validated_lock:
                     validated_litter.extend(validated)
                     total = len(validated_litter)
-                for lf in validated:
-                    ok, buf = cv2.imencode(".jpg", lf.overlay, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
+                for lf, ok_validated in results:
+                    overlay = lf.overlay if ok_validated else _mark_rejected(lf.overlay)
+                    ok, buf = cv2.imencode(".jpg", overlay, [cv2.IMWRITE_JPEG_QUALITY, JPEGQUALITY])
                     if ok:
                         validated_pub.put(buf.tobytes(), encoding=zenoh.Encoding.IMAGE_JPEG)
                 logger.info(

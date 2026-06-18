@@ -1,18 +1,13 @@
 import json
 import time
 from config import Settings
-from topics_pydantic_models.pydantic_models import Point, Task4
+from topics_pydantic_models.pydantic_models import Point, Task4, OrderedPoints
 import zenoh
-
 from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from interfaces.topics import TOPICS
-class OrderedPoints(BaseModel):
-    """Die optimierte Reihenfolge der Müllpunkte."""
-    points: dict[str, Point]
-
 
 def run_task():
 
@@ -122,8 +117,3 @@ def run_task():
             return result
         finally:
             session.close()
-
-    """""
-    if __name__ == "__main__":
-        run_task()
-    """""

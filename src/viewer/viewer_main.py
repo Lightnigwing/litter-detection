@@ -11,6 +11,7 @@ import logging
 import sys
 import threading
 import tkinter as tk
+from collections import deque
 from pathlib import Path
 
 import zenoh
@@ -41,9 +42,16 @@ COLS = 3
 THUMB_W, THUMB_H = 426, 240  # ~16:9 per cell
 BG = "#1a1a1a"
 
+# Wie viele Bilder pro Slot behalten + wie das Sub-Raster aufgebaut ist (rows, cols).
+# Default: 1 Bild, 1x1.
+CAPACITY = {"litter/cropped": 4, "litter/validated": 2}
+SUBGRID = {"litter/cropped": (2, 2), "litter/validated": (1, 2)}
+
 
 def main() -> None:
-    latest: dict[str, Image.Image | None] = {t: None for t, _ in TOPICS}
+    latest: dict[str, deque] = {
+        t: deque(maxlen=CAPACITY.get(t, 1)) for t, _ in TOPICS
+    }
     lock = threading.Lock()
 
     conf = zenoh.Config()
@@ -91,7 +99,7 @@ def main() -> None:
                     logger.warning("[%s] failed to decode image: %s", topic, e)
                     return
             with lock:
-                latest[topic] = img
+                latest[topic].append(img)
         return on_sample
 
     subscribers = []
@@ -117,24 +125,42 @@ def main() -> None:
             font=("Helvetica", 9, "bold"),
         ).pack(anchor="w", padx=2)
 
-        img_label = tk.Label(cell, bg="#2a2a2a", width=THUMB_W, height=THUMB_H)
-        img_label.pack()
+        rows, cols = SUBGRID.get(topic, (1, 1))
+        thumb_w = THUMB_W // cols
+        thumb_h = THUMB_H // rows
 
-        panels.append({"topic": topic, "label": img_label, "photo": None})
+        grid = tk.Frame(cell, bg=BG)
+        grid.pack()
+        sub_labels = []
+        for i in range(rows * cols):
+            r, c = divmod(i, cols)
+            lbl = tk.Label(grid, bg="#2a2a2a", width=thumb_w, height=thumb_h)
+            lbl.grid(row=r, column=c, padx=1, pady=1)
+            sub_labels.append(lbl)
+
+        panels.append({
+            "topic": topic,
+            "labels": sub_labels,
+            "photos": [None] * len(sub_labels),
+            "thumb": (thumb_w, thumb_h),
+        })
 
     for c in range(COLS):
         root.columnconfigure(c, weight=1)
 
     def update_frame() -> None:
         with lock:
-            snapshot = dict(latest)
+            snapshot = {t: list(d) for t, d in latest.items()}
         for panel in panels:
-            img = snapshot[panel["topic"]] or placeholder
-            thumb = img.copy()
-            thumb.thumbnail((THUMB_W, THUMB_H), Image.LANCZOS)
-            photo = ImageTk.PhotoImage(thumb)
-            panel["label"].configure(image=photo)
-            panel["photo"] = photo  # keep reference to prevent GC
+            # neueste zuerst anzeigen
+            images = list(reversed(snapshot[panel["topic"]]))
+            for slot, lbl in enumerate(panel["labels"]):
+                img = images[slot] if slot < len(images) else placeholder
+                thumb = img.copy()
+                thumb.thumbnail(panel["thumb"], Image.LANCZOS)
+                photo = ImageTk.PhotoImage(thumb)
+                lbl.configure(image=photo)
+                panel["photos"][slot] = photo  # keep reference to prevent GC
         root.after(33, update_frame)  # ~30 Hz
 
     def on_close() -> None:
