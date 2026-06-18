@@ -84,6 +84,7 @@ def run_task():
             route_planner_agent = Agent(
                 model,
                 output_type=OrderedPoints,
+                retries=3,
                 system_prompt=(
                     "Du bist ein intelligenter Router für einen Hund-Roboter. "
                     "Der Roboter startet bei seiner aktuellen Position und muss alle Müllpunkte besuchen. "
