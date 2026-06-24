@@ -97,4 +97,4 @@ Wichtig:
 
 
 ## Kurze persönliche Reflexion 
-Top
+Die KI hat die Anforderungen des Prompts nahezu vollständig umgesetzt und funktionsfähigen Code erzeugt. Dadurch konnte die Implementierungszeit deutlich reduziert werden. Während der Integration zeigte sich jedoch ein kleiner Fehler: Task 6 wurde direkt nach der Ankunft ausgelöst, bevor der Hund vollständig zum Stillstand gekommen war, wodurch das Emote ignoriert wurde. Dieser Aspekt war im Prompt nicht explizit beschrieben und war mir zu diesem Zeitpunkt ebenfalls nicht bewusst. Daher musste zunächst eine Fehlersuche durchgeführt werden, um die Ursache zu identifizieren. Nachdem das Problem erkannt wurde, ließ es sich mit geringem Aufwand beheben. Insgesamt war die Antwort sehr hilfreich und erforderte nur wenig Nacharbeit.
