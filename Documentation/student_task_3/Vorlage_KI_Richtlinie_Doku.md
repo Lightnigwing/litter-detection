@@ -88,4 +88,4 @@ Beispiel: Warum hat der Müllsack einen Deckel? Damit der Müll nicht rauskommt!
 
 
 ## Kurze persönliche Reflexion 
-Top
+Die KI hat den Prompt fast vollständig umgesetzt und die gewünschte Funktion erstellt. Lediglich der generierte Witz hat beim ersten Versuch nicht wie erwartet funktioniert, weshalb eine kleine Anpassung nötig war. Insgesamt war die Antwort jedoch hilfreich und hat den Arbeitsaufwand reduziert.
