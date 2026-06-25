@@ -5,7 +5,7 @@ import time
 from config import Settings
 from topics_pydantic_models.pydantic_models import Point, Task4, SearchPath
 import zenoh
-from pydantic_ai import Agent
+from pydantic_ai import Agent, PromptedOutput
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from interfaces.topics import TOPICS
@@ -98,7 +98,10 @@ def run_task():
     model = OpenAIChatModel("qwen2.5:7b", provider=provider)
     route_planner_agent = Agent(
         model,
-        output_type=SearchPath,
+        # PromptedOutput statt Tool-Calling: qwen schreibt das JSON-Array als Text
+        # (wie im Prompt verlangt); pydantic-ai parst es, statt auf einen Tool-Call
+        # zu warten (sonst "Exceeded maximum output retries").
+        output_type=PromptedOutput(SearchPath),
         output_retries=3,
         system_prompt=(
             "Du bist ein intelligenter Router für einen Hund-Roboter. "

@@ -5,7 +5,7 @@ from pathlib import Path
 from config import Settings
 from topics_pydantic_models.pydantic_models import Task3, Joke
 import zenoh
-from pydantic_ai import Agent
+from pydantic_ai import Agent, PromptedOutput
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 import mlflow
@@ -49,7 +49,10 @@ def run_task():
     model = OpenAIChatModel("qwen2.5:7b", provider=provider)
     agent = Agent(
         model,
-        output_type=Joke,
+        # PromptedOutput statt Tool-Calling: qwen2.5:7b schreibt das JSON als Text
+        # (wie im Prompt verlangt) — pydantic-ai parst diesen Text, statt auf einen
+        # Tool-Call zu warten, der nie kommt (sonst "Exceeded maximum output retries").
+        output_type=PromptedOutput(Joke),
         retries=3,
         system_prompt=(
             "Du bist ein humorvoller Witzeerzähler.\n"
