@@ -9,10 +9,11 @@ from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 import mlflow
+from tasks._ollama import warmup_model
 
 _MLFLOW_AGENT_DB = Path(__file__).parent.parent / "mlflow_agent.db"
 MAX_RETRIES = 3
-AGENT_TIMEOUT = 120
+AGENT_TIMEOUT = 180
 FALLBACK_WITZ = "Warum hat der Müllsack einen Deckel? Damit der Müll nicht rauskommt!"
 
 
@@ -67,6 +68,9 @@ def run_task():
     user_prompt = (
         f"Erzeuge einen Müll-Witz. Kontext: Es wurden {data_2_2['amount_litter']} Müllstücke gefunden."
     )
+
+    # Modell vor dem getimten Versuch laden/pinnen (Kaltstart nach task2_2/llava vermeiden)
+    warmup_model("qwen2.5:7b")
 
     result = None
     status = "failed"
