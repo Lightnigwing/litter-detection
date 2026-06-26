@@ -44,8 +44,8 @@ def run_task():
         ordered_r0 = [(k, v) for k, v in ordered if k != "point0"]
         if not ordered_r0:
             raise ValueError("task2_1: Task1 lieferte keine Punkte")
-        time.sleep(15.0)  # Kurze Pause, damit task2_2 gestartet ist
-        print(f"[TASK2_1] {len(ordered_r0)} Punkte zu abfahren: {[name for name, _ in ordered_r0]}")
+
+        print(f"[TASK2_1] {len(ordered)} Punkte zu abfahren: {[name for name, _ in ordered]}")
 
         # NavStatus-Subscriber + Wait-Event
         arrived = threading.Event()
