@@ -21,11 +21,12 @@ Assumptions:
 
 ### Work Packages
 
-1. Understand the provided repository and steps taken by the system. Understand the approach of automated research 
-2. Identify improvement points and improve the solution (everything allowed)
-3. Compare the model with the alternative approach fine-tuning a yolo-model.
-4. Prepare the inference system by connecting a webcam via eclipse zenoh.
-5. Add an  application monitoring stack with suitable dashboards according to the introduced stack in the lecture
+1. Understand the provided repository and steps taken by the system. Understand the approach of automated research (Jonas)
+2. Identify improvement points and improve the solution (everything allowed) (Jonas)
+3. Prepare the model for inference on the Jetson hardware using tensorRT
+4. Compare the model with the alternative approach fine-tuning a yolo-model. (Jonas)
+5. Prepare the inference system by connecting a webcam via eclipse zenoh. (Felix)
+6. Add an  application monitoring stack with suitable dashboards according to the introduced stack in the lecture (Daniel)
 
 Optional:
 
@@ -35,8 +36,8 @@ Optional:
 
 1. AI Usage: How did you use AI during this task? (Prompts, Agents, Pipelines, Tools, ...)
 2. Identified improvement points and result, with of these points worked out and which did not.
-3. Demo of the litter detection model with reported IoU
-4. Webcam Demo
+3. Demo of the litter detection model with reported IoU 
+4. Webcam Demo 
 
 ## Starting Questions for finding Improvements
 

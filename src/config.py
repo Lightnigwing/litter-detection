@@ -1,0 +1,65 @@
+"""Central configuration for the litter-detection pipeline."""
+
+from dataclasses import dataclass
+
+import zenoh
+
+
+@dataclass
+class Settings:
+    # Zenoh localhost
+    zenoh_router: str = "tcp/192.168.4.249:7447"
+    zenoh_shared_memory: bool = False
+    topic_frame: str = "litter/frame"
+    topic_detections: str = "litter/detections"
+    topic_overlay: str = "litter/overlay"
+    topic_depth_img: str = "litter/frame_depth"
+    topic_camera_intrinsics: str = "litter/frame_intrinsics"
+
+    # Robodog hardware
+    go2_local_address: str = "192.168.4.203"
+
+
+    # Model
+    # model_type selects the inference backend:
+    #   "yolo"              -> Ultralytics YOLO (bounding boxes)
+    #   "resnet34_unet"     -> U-Net with ResNet-34 encoder (segmentation)
+    #   "efficientnetb4_unet" -> U-Net with EfficientNet-B4 encoder (segmentation)
+    model_type: str = "effnetb3_unet"
+    # model_path is the full filename (relative to repo root) incl. extension:
+    #   yolo          -> "yolov8n.pt"
+    #   resnet34_unet -> "best_resnet34.pth" or "best_model.pth"
+    #   effnetb4_unet -> "best_efficientnetb4.pth"
+    #   effnetb3_unet -> "efficientnetB3unet_50_onnxauserhalb.pth"
+    model_path: str = "efficientnetB3unet_50_onnxauserhalb.pth"
+
+    # UNet inference
+    infer_size: int = 512
+    segmentation_threshold: float = 0.5
+    # Minimum litter pixel fraction to count as a positive detection
+    detection_fraction_threshold: float = 0.01
+
+    # Mask overlay
+    mask_color_bgr: tuple[int, int, int] = (0, 80, 255)
+    mask_alpha: float = 0.55
+
+    # OpenTelemetry
+    otel_endpoint: str = "http://127.0.0.1:4317"
+    otel_service_name: str = "yolo-detector"
+
+    # Logging
+    task2_2_logging: bool = True
+
+    def zenoh_config(self) -> zenoh.Config:
+        """Baut die Zenoh-Client-Config.
+
+        Variante A: keine Auto-Discovery (Multicast/Gossip aus), damit sich der
+        Client nur mit dem konfigurierten Router verbindet und keine fremden
+        Router/Peers im selben LAN aufgreift.
+        """
+        conf = zenoh.Config()
+        conf.insert_json5("mode", '"client"')
+        conf.insert_json5("connect/endpoints", f'["{self.zenoh_router}"]')
+        conf.insert_json5("scouting/multicast/enabled", "false")
+        conf.insert_json5("scouting/gossip/enabled", "false")
+        return conf

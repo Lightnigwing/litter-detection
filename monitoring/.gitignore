@@ -1,0 +1,29 @@
+# Docker volumes (local data)
+prometheus_data/
+tempo_data/
+loki_data/
+grafana_data/
+
+# Environment files (don't commit secrets)
+.env
+.env.local
+
+# OS files
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+
+# Logs
+*.log
+docker-compose.log
+
+# Temporary files
+tmp/
+*.tmp

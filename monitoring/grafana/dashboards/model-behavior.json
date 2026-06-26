@@ -1,0 +1,78 @@
+{
+  "uid": "litter-model-behavior",
+  "title": "Litter Detection — Model Behavior & Detections",
+  "tags": ["model", "behavior"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "title": "Average Training Loss",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "training_loss_train_sum / training_loss_train_count"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Average Validation Loss",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [
+        {
+          "expr": "training_loss_validation_sum / training_loss_validation_count"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Average Training IoU",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "training_iou_train_sum / training_iou_train_count"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Average Validation IoU",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [
+        {
+          "expr": "training_iou_validation_sum / training_iou_validation_count"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Average Epoch Duration",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [
+        {
+          "expr": "training_epoch_time_seconds_sum / training_epoch_time_seconds_count"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Epochs Completed",
+      "type": "stat",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+      "targets": [
+        {
+          "expr": "training_epochs_completed_total"
+        }
+      ]
+    }
+  ]
+}

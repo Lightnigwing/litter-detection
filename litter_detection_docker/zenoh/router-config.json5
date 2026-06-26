@@ -1,0 +1,36 @@
+{
+  listen: {
+    endpoints: ["tcp/0.0.0.0:7447"]
+  },
+  scouting: {
+    // Variante A: keine Auto-Discovery -> Router verbindet sich nicht
+    // selbstständig mit fremden Routern/Peers im selben LAN.
+    multicast: {
+      enabled: false
+    },
+    gossip: {
+      enabled: false
+    }
+  },
+  plugins: {
+    rest: {
+      http_port: 8000
+    },
+    storage_manager: {
+      storages: {
+        pipeline_start: {
+          key_expr: "pipeline/**/start",
+          volume: {
+            id: "memory"
+          }
+        },
+        pipeline_done: {
+          key_expr: "pipeline/**/done",
+          volume: {
+            id: "memory"
+          }
+        }
+      }
+    }
+  }
+}
