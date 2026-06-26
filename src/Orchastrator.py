@@ -1,7 +1,9 @@
 import os
+import shutil
+import signal
 import subprocess
 import sys
-from topics_pydantic_models.pydantic_models import Task1_user
+from pathlib import Path
 import zenoh
 import yaml
 import json
@@ -10,9 +12,7 @@ import time
 from config import Settings
 
 settings = Settings()
-conf = zenoh.Config()
-conf.insert_json5("connect/endpoints", f'["{settings.zenoh_router}"]')
-session = zenoh.open(conf)
+session = zenoh.open(settings.zenoh_config())
 
 
 # Load pipeline configuration
@@ -63,60 +63,82 @@ def on_done(sample):
 
 session.declare_subscriber("pipeline/*/done", on_done)
 
+
+_TMUX_SESSION = "litter-orch"
+
+
+class TmuxProcess:
+    """Wraps a process launched in a tmux window; satisfies .terminate()/.wait()."""
+
+    def __init__(self, session: str, window: str) -> None:
+        time.sleep(0.3)
+        r = subprocess.run(
+            ["tmux", "display-message", "-p", "-t", f"{session}:{window}", "#{pane_pid}"],
+            capture_output=True, text=True,
+        )
+        self._pid = int(r.stdout.strip())
+
+    def terminate(self) -> None:
+        try:
+            os.kill(self._pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+
+    def wait(self) -> None:
+        while True:
+            try:
+                os.kill(self._pid, 0)
+                time.sleep(0.1)
+            except ProcessLookupError:
+                return
+
+
+def _spawn(name: str, module: str, cwd: str):
+    args = [sys.executable, "-m", module]
+
+    if sys.platform == "win32":
+        return subprocess.Popen(args, cwd=cwd, creationflags=subprocess.CREATE_NEW_CONSOLE)
+
+    if shutil.which("tmux"):
+        subprocess.run(["tmux", "new-session", "-d", "-s", _TMUX_SESSION], capture_output=True)
+        subprocess.run(
+            ["tmux", "new-window", "-d", "-t", _TMUX_SESSION, "-n", name,
+             f"cd {cwd} && {' '.join(args)}"],
+        )
+        return TmuxProcess(_TMUX_SESSION, name)
+
+    log_dir = Path(cwd).parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_path = log_dir / f"{name}.log"
+    log_fh = open(log_path, "w")
+    print(f"[ORCH] {name} → {log_path}")
+    return subprocess.Popen(args, cwd=cwd, stdout=log_fh, stderr=log_fh)
+
+
 # Main loop: start tasks as soon as their dependencies are done, ends when all tasks are done
 def main():
     # Worker, NavManager und Pose-Source starten
     src_dir = os.path.join(os.getcwd(), "src")
-    worker = subprocess.Popen(
-        [sys.executable, "-m", "worker"], cwd=src_dir
-    )
-    #cam_proc = subprocess.Popen(
-    #    [sys.executable, "-m", "camera.camera_realsense"], cwd=src_dir
-    #)
-    nav_proc = subprocess.Popen(
-        [sys.executable, "-m", "nav.nav_manager"], cwd=src_dir
-    )
-    robot_mode = os.environ.get("LITTER_ROBOT_MODE", "mock")
+    worker = subprocess.Popen([sys.executable, "-m", "worker"], cwd=src_dir)
+    cam_proc = _spawn("camera", "camera.camera_realsense", src_dir)
+    nav_proc = _spawn("nav_manager", "nav.nav_manager", src_dir)
+    robot_mode = os.environ.get("LITTER_ROBOT_MODE", "real")
     if robot_mode == "real":
-        # Echter Go2: robodog-Bridge übernimmt Odometry über WebRTC
-        pose_proc = subprocess.Popen(
-            [sys.executable, "-m", "robodog.main"], cwd=src_dir
-        )
+        pose_proc = _spawn("robodog", "robodog.main", src_dir)
     else:
-        # Mock: integriert MovementCommands zu einer Pose
-        pose_proc = subprocess.Popen(
-            [sys.executable, "-m", "nav.mock_odometry"], cwd=src_dir
-        )
+        pose_proc = _spawn("mock_odometry", "nav.mock_odometry", src_dir)
     print(f"[ORCH] Robot mode: {robot_mode}")
     time.sleep(5)
     
-    user_input_x, user_input_y = None, None
-
-    # Initial data for Task1
-    while user_input_x is None or user_input_y is None:
-        try:
-            user_input_x, user_input_y = map(int, input("Gib x und y ein: ").split())
-        except ValueError:
-            print("Ungültige Eingabe. Bitte gib zwei ganze Zahlen ein, getrennt durch ein Leerzeichen.")
-        except KeyboardInterrupt:
-            print("\nAbbruch durch Benutzer (Strg+C).")
-            session.close()
-            break
-
-    initial_data = Task1_user(
-        x=user_input_x, 
-        y=user_input_y
-        )
-    
-    # Start Task1 with initial data
-    session.put(f"pipeline/task1/start", json.dumps({
-        "task_id": "task1",
+    # Start Task0
+    session.put(f"pipeline/task0/start", json.dumps({
+        "task_id": "task0",
         "run_id": run_id,
         "status": "start",
-        "data": initial_data.model_dump_json()
+        "data": {}
     }))
 
-    started.add("task1")
+    started.add("task0")
 
     while len(done) < len(tasks):
         try:
@@ -133,7 +155,7 @@ def main():
 
     session.close()
     #cam_proc
-    for proc in (worker, nav_proc, pose_proc):
+    for proc in (worker, nav_proc, pose_proc, cam_proc):
         proc.terminate()
         proc.wait()
         

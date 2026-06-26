@@ -14,11 +14,11 @@ JPEGQUALITY = 95
 
 WIDTH_RGB = 1280
 HEIGHT_RGB = 720
-FPS_RGB = 30
+FPS_RGB = 6
 
 WIDTH_DEPTH = 1280
 HEIGHT_DEPTH = 720
-FPS_DEPTH = 30
+FPS_DEPTH = 6
 
 class Intrinsics(BaseModel):
     width: int
@@ -32,9 +32,7 @@ class Intrinsics(BaseModel):
 
 def main():
     settings = Settings()
-    conf = zenoh.Config()
-    conf.insert_json5("connect/endpoints", f'["{settings.zenoh_router}"]')
-    z = zenoh.open(conf)
+    z = zenoh.open(settings.zenoh_config())
     logger.info("Zenoh Config done")
     # Zenoh topics
     rs_topic_rgb_img = settings.topic_frame

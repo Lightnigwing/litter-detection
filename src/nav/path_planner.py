@@ -8,8 +8,7 @@ from interfaces.navigation import (
     PlannedPath,
     Pose2D,
 )
-
-DEFAULT_SPEED = 0.4  # m/s, conservative for Go2 indoors
+from nav.config import NavConfig
 
 
 class PathPlannerModule:
@@ -19,13 +18,18 @@ class PathPlannerModule:
     The executor handles turning toward and walking to each waypoint.
     """
 
+    def __init__(self, config: NavConfig | None = None) -> None:
+        self._config = config or NavConfig()
+
     def plan(self, request: NavigationRequest, current_pose: Pose2D) -> PlannedPath:
         """Plan a path from current_pose through all segments."""
         waypoints: list[PathWaypoint] = []
 
         for segment in request.segments:
             speed = (
-                segment.max_speed if segment.max_speed is not None else DEFAULT_SPEED
+                segment.max_speed
+                if segment.max_speed is not None
+                else self._config.default_speed
             )
             waypoints.append(
                 PathWaypoint(

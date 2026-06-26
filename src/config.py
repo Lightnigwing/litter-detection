@@ -2,11 +2,13 @@
 
 from dataclasses import dataclass
 
+import zenoh
+
 
 @dataclass
 class Settings:
-    # Zenoh
-    zenoh_router: str = "tcp/localhost:7447"
+    # Zenoh localhost
+    zenoh_router: str = "tcp/192.168.4.249:7447"
     zenoh_shared_memory: bool = False
     topic_frame: str = "litter/frame"
     topic_detections: str = "litter/detections"
@@ -15,15 +17,8 @@ class Settings:
     topic_camera_intrinsics: str = "litter/frame_intrinsics"
 
     # Robodog hardware
-    go2_local_address: str = "192.168.4.201"
+    go2_local_address: str = "192.168.4.203"
 
-    # Camera
-    # camera_index=0 is usually the built-in webcam, camera_index=1 is the first external webcam. Adjust as needed.
-    camera_index: int = 1
-    frame_width: int = 640
-    frame_height: int = 480
-    fps: int = 10
-    jpeg_quality: int = 85
 
     # Model
     # model_type selects the inference backend:
@@ -35,8 +30,8 @@ class Settings:
     #   yolo          -> "yolov8n.pt"
     #   resnet34_unet -> "best_resnet34.pth" or "best_model.pth"
     #   effnetb4_unet -> "best_efficientnetb4.pth"
-    #   effnetb3_unet -> "efficientnetB3unet_50_onnxauserhalb_final.onnx"
-    model_path: str = "efficientnetB3unet_50_onnxauserhalb_final.onnx"
+    #   effnetb3_unet -> "efficientnetB3unet_50_onnxauserhalb.pth"
+    model_path: str = "efficientnetB3unet_50_onnxauserhalb.pth"
 
     # UNet inference
     infer_size: int = 512
@@ -44,6 +39,27 @@ class Settings:
     # Minimum litter pixel fraction to count as a positive detection
     detection_fraction_threshold: float = 0.01
 
+    # Mask overlay
+    mask_color_bgr: tuple[int, int, int] = (0, 80, 255)
+    mask_alpha: float = 0.55
+
     # OpenTelemetry
     otel_endpoint: str = "http://127.0.0.1:4317"
     otel_service_name: str = "yolo-detector"
+
+    # Logging
+    task2_2_logging: bool = True
+
+    def zenoh_config(self) -> zenoh.Config:
+        """Baut die Zenoh-Client-Config.
+
+        Variante A: keine Auto-Discovery (Multicast/Gossip aus), damit sich der
+        Client nur mit dem konfigurierten Router verbindet und keine fremden
+        Router/Peers im selben LAN aufgreift.
+        """
+        conf = zenoh.Config()
+        conf.insert_json5("mode", '"client"')
+        conf.insert_json5("connect/endpoints", f'["{self.zenoh_router}"]')
+        conf.insert_json5("scouting/multicast/enabled", "false")
+        conf.insert_json5("scouting/gossip/enabled", "false")
+        return conf

@@ -8,7 +8,6 @@ from pathlib import Path
 import albumentations as A
 import cv2
 import numpy as np
-import onnxruntime as ort
 import torch
 from albumentations.pytorch import ToTensorV2
 
@@ -16,6 +15,8 @@ from albumentations.pytorch import ToTensorV2
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+from config import Settings
 
 
 def _install_mlflow_stub() -> None:
@@ -57,10 +58,11 @@ def _install_mlflow_stub() -> None:
 def _load_torch_variants() -> tuple[float, dict]:
     """Import training-side model definitions only when torch backend is used."""
     _install_mlflow_stub()
-    from model.train import DROPOUT, ResNet34UNet
+    from model.train import DROPOUT, ResNet34UNet, EfficientNetB3UNet
 
     variants = {
         "resnet34_unet": ResNet34UNet,
+        "effnetb3_unet": EfficientNetB3UNet,
     }
     return DROPOUT, variants
 
@@ -81,7 +83,11 @@ class UnetBackendTorch:
         infer_size: int = 384,
         threshold: float = 0.5,
         fraction_threshold: float = 0.01,
+        settings: Settings | None = None,
     ) -> None:
+        _settings = settings or Settings()
+        self.mask_color = _settings.mask_color_bgr
+        self.mask_alpha = _settings.mask_alpha
         dropout, variants = _load_torch_variants()
 
         if variant not in variants:
@@ -136,69 +142,8 @@ class UnetBackendTorch:
             "latency_ms": round(duration * 1000, 1),
             "model": self.name,
         }
-        overlay = _draw_mask_overlay(img_bgr, mask)
-        return result, overlay
-
-
-class UnetBackendONNX:
-    def __init__(
-        self,
-        model_path: str,
-        infer_size: int = 384,
-        threshold: float = 0.5,
-        fraction_threshold: float = 0.01,
-    ) -> None:
-        self.name = model_path
-        self.infer_size = infer_size
-        self.threshold = threshold
-        self.fraction_threshold = fraction_threshold
-
-        providers = ["CPUExecutionProvider"]
-        available = set(ort.get_available_providers())
-        if "CUDAExecutionProvider" in available:
-            providers.insert(0, "CUDAExecutionProvider")
-
-        self.session = ort.InferenceSession(model_path, providers=providers)
-        self.input_name = self.session.get_inputs()[0].name
-
-        self.transform = A.Compose(
-            [
-                A.Resize(infer_size, infer_size),
-                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-                ToTensorV2(),
-            ]
-        )
-
-    def infer(self, img_bgr: np.ndarray) -> tuple[dict, np.ndarray]:
-        img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-
-        t0 = time.perf_counter()
-        tensor = self.transform(image=img_rgb)["image"].numpy()
-        tensor = np.expand_dims(tensor, axis=0).astype(np.float32)
-        outputs = self.session.run(None, {self.input_name: tensor})
-        logits = np.asarray(outputs[0])
-        prob = 1.0 / (1.0 + np.exp(-logits))
-        prob = prob.squeeze()
-        duration = time.perf_counter() - t0
-
-        mask = prob > self.threshold
-        litter_fraction = float(mask.mean())
-        mean_confidence = float(prob[mask].mean()) if mask.any() else 0.0
-
-        detections = []
-        if litter_fraction >= self.fraction_threshold:
-            detections.append(
-                {"class": "litter", "confidence": round(mean_confidence, 3)}
-            )
-
-        result = {
-            "detections": detections,
-            "litter_fraction": round(litter_fraction, 4),
-            "latency_ms": round(duration * 1000, 1),
-            "model": self.name,
-        }
-        overlay = _draw_mask_overlay(img_bgr, mask)
-        return result, overlay
+        overlay = _draw_mask_overlay(img_bgr, mask, color=self.mask_color, alpha=self.mask_alpha)
+        return result, overlay, mask
 
 
 def _draw_mask_overlay(

@@ -1,4 +1,17 @@
 {
+  listen: {
+    endpoints: ["tcp/0.0.0.0:7447"]
+  },
+  scouting: {
+    // Variante A: keine Auto-Discovery -> Router verbindet sich nicht
+    // selbstständig mit fremden Routern/Peers im selben LAN.
+    multicast: {
+      enabled: false
+    },
+    gossip: {
+      enabled: false
+    }
+  },
   plugins: {
     rest: {
       http_port: 8000

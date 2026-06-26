@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from inference.unet_backend import UnetBackendONNX, UnetBackendTorch
+from inference.unet_backend import UnetBackendTorch
 import cv2
 import numpy as np
 import zenoh
@@ -27,35 +27,17 @@ settings = Settings()
 
 
 def build_backend(settings: Settings):
-    model_path = settings.model_path
-
-    # YOLO
-    #if settings.model_type == "yolo":
-    #    from src.interference.yolo_backend import YoloBackend
-    #    return YoloBackend(model_path)
-
-    # ONNX
-    if model_path.endswith(".onnx"):
-
-        return UnetBackendONNX(
-            model_path=model_path,
-            infer_size=settings.infer_size,
-            threshold=settings.segmentation_threshold,
-            fraction_threshold=settings.detection_fraction_threshold,
-        )
-
-    # Fallback
-    if settings.model_type in ("resnet34_unet", "efficientnetb4_unet", "effnetb3_unet"):
-
-        return UnetBackendTorch(
-            model_path=model_path,
-            variant=settings.model_type,
-            infer_size=settings.infer_size,
-            threshold=settings.segmentation_threshold,
-            fraction_threshold=settings.detection_fraction_threshold,
-        )
-
-    raise ValueError(f"Unknown model_type: {settings.model_type!r}")
+    supported = ("resnet34_unet", "effnetb3_unet")
+    if settings.model_type not in supported:
+        raise ValueError(f"Unknown model_type: {settings.model_type!r}. Supported: {supported}")
+    return UnetBackendTorch(
+        model_path=settings.model_path,
+        variant=settings.model_type,
+        infer_size=settings.infer_size,
+        threshold=settings.segmentation_threshold,
+        fraction_threshold=settings.detection_fraction_threshold,
+        settings=settings,
+    )
 
 def decode_frame(data: bytes) -> np.ndarray | None:
     arr = np.frombuffer(data, np.uint8)
@@ -72,9 +54,7 @@ def main() -> None:
     backend = build_backend(settings)
     logger.info("Backend ready.")
 
-    conf = zenoh.Config()
-    conf.insert_json5("connect/endpoints", f'["{settings.zenoh_router}"]')
-    session = zenoh.open(conf)
+    session = zenoh.open(settings.zenoh_config())
     logger.info(
         "Zenoh session open — subscribing to '%s', publishing to '%s' + '%s'",
         settings.topic_frame,
@@ -109,7 +89,7 @@ def main() -> None:
             if img is None:
                 continue
 
-            result, overlay = backend.infer(img)
+            result, overlay, _ = backend.infer(img)
 
             if stop_event.is_set():
                 return
